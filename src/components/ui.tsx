@@ -1,0 +1,24 @@
+"use client";
+
+import { useEffect, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
+
+export function Button({ variant = "primary", className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "quiet" }) { return <button className={`button button--${variant} ${className}`} {...props} />; }
+export function Input(props: InputHTMLAttributes<HTMLInputElement>) { return <input className="input" {...props} />; }
+export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) { return <select className="input" {...props} />; }
+export function Card({ children, className = "" }: { children: ReactNode; className?: string }) { return <section className={`card ${className}`}>{children}</section>; }
+export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "success" | "warning" | "danger" }) { return <span className={`badge badge--${tone}`}>{children}</span>; }
+export function Alert({ children, tone = "info" }: { children: ReactNode; tone?: "info" | "error" }) { return <p className={`alert alert--${tone}`} role="alert">{children}</p>; }
+export function LoadingState({ label = "Loading…" }: { label?: string }) { return <p className="loading" role="status"><span aria-hidden="true" />{label}</p>; }
+export function EmptyState({ title, detail }: { title: string; detail: string }) { return <div className="empty-state"><strong>{title}</strong><span>{detail}</span></div>; }
+export function ErrorState({ detail }: { detail: string }) { return <Alert tone="error">{detail}</Alert>; }
+export function Breadcrumbs({ items }: { items: string[] }) { return <nav className="breadcrumbs" aria-label="Breadcrumb">{items.map((item, index) => <span key={item}>{index ? " / " : ""}{item}</span>)}</nav>; }
+export function Search({ label = "Search" }: { label?: string }) { return <label className="search"><span className="sr-only">{label}</span><Input placeholder={label} type="search" /></label>; }
+export function Filters({ children }: { children: ReactNode }) { return <div className="filters">{children}</div>; }
+export function Pagination({ current = 1, total = 1 }: { current?: number; total?: number }) { return <p className="pagination">Page {current} of {total}</p>; }
+export function DatePicker(props: InputHTMLAttributes<HTMLInputElement>) { return <Input type="date" {...props} />; }
+export function Dropdown({ label, children }: { label: string; children: ReactNode }) { return <details className="dropdown"><summary>{label}</summary><div>{children}</div></details>; }
+export function Modal({ open, title, children, onClose }: { open: boolean; title: string; children: ReactNode; onClose: () => void }) { return open ? <div className="modal-backdrop" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-label={title}><header><strong>{title}</strong><Button variant="quiet" onClick={onClose} aria-label="Close">×</Button></header>{children}</section></div> : null; }
+export function Drawer({ open, children, onClose }: { open: boolean; children: ReactNode; onClose: () => void }) { return open ? <div className="drawer-backdrop"><aside className="drawer">{children}<Button variant="quiet" onClick={onClose}>Close</Button></aside></div> : null; }
+export function Toast({ message }: { message: string | null }) { return message ? <p className="toast" role="status">{message}</p> : null; }
+export function ConfirmationDialog({ open, onConfirm, onClose, children }: { open: boolean; onConfirm: () => void; onClose: () => void; children: ReactNode }) { return <Modal open={open} title="Confirm action" onClose={onClose}><p>{children}</p><div className="dialog-actions"><Button onClick={onConfirm}>Confirm</Button><Button variant="secondary" onClick={onClose}>Cancel</Button></div></Modal>; }
+export function useToast() { const [message, setMessage] = useState<string | null>(null); useEffect(() => { if (!message) return; const timer = window.setTimeout(() => setMessage(null), 3000); return () => window.clearTimeout(timer); }, [message]); return { message, show: setMessage }; }
