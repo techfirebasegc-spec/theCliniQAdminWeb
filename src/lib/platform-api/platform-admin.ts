@@ -1,4 +1,4 @@
-import { platformDownload, platformPost, platformRequest } from "./client";
+import { platformDelete, platformDownload, platformPatch, platformPost, platformRequest } from "./client";
 
 export type PlatformClinic = { id: string; tenantId: string; displayName: string; legalName: string; clinicStatus: string; tenantStatus: string; ownerEmail: string | null; ownerMembershipStatus: string | null; invitationStatus: string | null };
 export type PlatformDoctor = { id: string; accountId: string; displayName: string | null; status: string; professionalVerificationStatus: string; clinicNames: string[] };
@@ -10,8 +10,16 @@ export type VerificationEvidence = { id: string; originalFilename: string; conte
 export type DoctorVerificationSubmission = { id: string; status: "PENDING" | "APPROVED" | "REJECTED"; registrationAuthority: string; registrationJurisdiction: string; registrationIdentifier: string; submittedAt: string; reviewedAt: string | null; rejectionReason: string | null };
 export type DoctorApplication = { id: string; doctorProfileId: string; doctorAccountId: string; displayName: string | null; profileStatus: string; professionalVerificationStatus: string; status: "PENDING" | "APPROVED" | "REJECTED"; submittedAt: string; reviewedAt: string | null; reviewerAccountId: string | null; rejectionReason: string | null };
 export type ClinicApplication = { id: string; applicantAccountId: string; legalName: string; clinicName: string; ownerEmail: string; status: "PENDING" | "APPROVED" | "REJECTED"; submittedAt: string; reviewerAccountId: string | null; reviewedAt: string | null; rejectionReason: string | null };
+export type ClinicCreatedDoctor = { id: string; clinicId: string; doctorProfileId: string; accountId: string; displayName: string; email: string; mobileNumber: string; dateOfBirth: string; sex: "FEMALE" | "MALE" | "NON_BINARY" | "NOT_SPECIFIED"; specialization: string; status: "PENDING" | "APPROVED" | "REJECTED"; credentialStatus: "PENDING_SETUP" | "READY" | "CLAIMED"; rejectionReason: string | null };
+export type CreatedPlatformAdmin = { accountId: string; firebaseUid: string };
+export type PresentationTemplate = { id: string; key: string; displayName: string; description: string; status: string; versions: Array<{ version: number; rendererKey: string; status: string; designTokenSchema: Record<string, unknown>; layoutOptionSchema: Record<string, unknown>; sectionSchema: Record<string, unknown>; assetPolicy: Record<string, unknown>; defaultConfiguration: Record<string, unknown> }> };
+export type PresentationCapability = { key: string; displayName: string; description: string; defaultEnabled: boolean; status: string };
+export type PresentationEntitlement = { id: string; subject: { kind: "DOCTOR"; doctorProfileId: string } | { kind: "CLINIC"; clinicId: string }; subjectLabel: string; capabilityKey: string; effect: "GRANT" | "DENY"; status: "ACTIVE" | "REVOKED"; externalReference: string | null; effectiveEnabled: boolean; effectiveSource: "EXPLICIT_DENY" | "EXPLICIT_GRANT" | "PLATFORM_DEFAULT" | "EFFECTIVE_DENY" };
 
 export function platformDashboard() { return platformRequest<PlatformMetrics>("/v1/platform/dashboard"); }
+export function createPlatformAdmin(email: string) { return platformPost<CreatedPlatformAdmin>("/v1/platform/admins", { email }); }
+export function requestPlatformAdminActivationEmail(id: string) { return platformPost<void>(`/v1/platform/admins/${encodeURIComponent(id)}/activation-email`); }
+export function recordPlatformAdminActivationEmail(id: string, outcome: "REQUESTED" | "FAILED") { return platformPost<void>(`/v1/platform/admins/${encodeURIComponent(id)}/activation-email/outcome`, { outcome }); }
 export function listPlatformClinics() { return platformRequest<{ items: PlatformClinic[] }>("/v1/platform/clinics"); }
 export function getPlatformClinic(id: string) { return platformRequest<{ clinic: PlatformClinic }>(`/v1/platform/clinics/${encodeURIComponent(id)}`); }
 export function activatePlatformClinic(id: string) { return platformPost<{ clinic: PlatformClinic }>(`/v1/platform/clinics/${encodeURIComponent(id)}/activate`); }
@@ -21,8 +29,8 @@ export function listOwnerInvitations() { return platformRequest<{ items: OwnerIn
 export function resendOwnerInvitation(id: string) { return platformPost<{ invitation: OwnerInvitation; invitationUrl: string }>(`/v1/platform/tenant-invitations/${encodeURIComponent(id)}/resend`, {}); }
 export function revokeOwnerInvitation(id: string) { return platformPost<void>(`/v1/platform/tenant-invitations/${encodeURIComponent(id)}/revoke`); }
 export function listDoctorInvitations() { return platformRequest<{ items: PlatformDoctorInvitation[] }>("/v1/platform/doctor-invitations"); }
-export function inviteDoctor(value: { email: string; displayName?: string }) { return platformPost<{ invitation: PlatformDoctorInvitation }>("/v1/platform/doctor-invitations", value); }
-export function resendDoctorInvitation(id: string) { return platformPost<{ invitation: PlatformDoctorInvitation }>(`/v1/platform/doctor-invitations/${encodeURIComponent(id)}/resend`); }
+export function inviteDoctor(value: { email: string; displayName?: string }) { return platformPost<{ invitation: PlatformDoctorInvitation; emailStatus: "ACCEPTED_BY_PROVIDER" | "FAILED" }>("/v1/platform/doctor-invitations", value); }
+export function resendDoctorInvitation(id: string) { return platformPost<{ invitation: PlatformDoctorInvitation; emailStatus: "ACCEPTED_BY_PROVIDER" | "FAILED" }>(`/v1/platform/doctor-invitations/${encodeURIComponent(id)}/resend`); }
 export function revokeDoctorInvitation(id: string) { return platformPost<void>(`/v1/platform/doctor-invitations/${encodeURIComponent(id)}/revoke`); }
 export function getClinicPublicDiscovery(id: string) { return platformRequest<{ publicDiscovery: PublicDiscoveryControl }>(`/v1/platform/clinics/${encodeURIComponent(id)}/public-discovery`); }
 export function publishClinicPublicDiscovery(id: string) { return platformPost<{ publicDiscovery: PublicDiscoveryControl }>(`/v1/platform/clinics/${encodeURIComponent(id)}/public-discovery/publish`); }
@@ -43,3 +51,15 @@ export function listClinicApplications() { return platformRequest<{ items: Clini
 export function getClinicApplication(id: string) { return platformRequest<{ application: ClinicApplication }>(`/v1/platform/clinic-applications/${encodeURIComponent(id)}`); }
 export function approveClinicApplication(id: string) { return platformPost<{ application: ClinicApplication }>(`/v1/platform/clinic-applications/${encodeURIComponent(id)}/approve`); }
 export function rejectClinicApplication(id: string, rejectionReason: string) { return platformPost<{ application: ClinicApplication }>(`/v1/platform/clinic-applications/${encodeURIComponent(id)}/reject`, { rejectionReason }); }
+export function listClinicCreatedDoctors() { return platformRequest<{ items: ClinicCreatedDoctor[] }>("/v1/platform/clinic-created-doctors/pending"); }
+export function listReadyClinicCreatedDoctors() { return platformRequest<{ items: ClinicCreatedDoctor[] }>("/v1/platform/clinic-created-doctors/ready"); }
+export function reviewClinicCreatedDoctor(id: string, status: "APPROVED" | "REJECTED", rejectionReason?: string) { return platformPost<{ doctor: ClinicCreatedDoctor }>(`/v1/platform/clinic-created-doctors/${encodeURIComponent(id)}/review`, { status, ...(rejectionReason ? { rejectionReason } : {}) }); }
+export function resendClinicCreatedDoctorActivation(id: string) { return platformPost<{ doctor: ClinicCreatedDoctor }>(`/v1/platform/clinic-created-doctors/${encodeURIComponent(id)}/resend-activation`, {}); }
+export function recordClinicCreatedDoctorActivationEmail(id: string, outcome: "REQUESTED" | "FAILED") { return platformPost<void>(`/v1/platform/clinic-created-doctors/${encodeURIComponent(id)}/activation-email`, { outcome }); }
+export function sendTransactionalEmailTest(value: { emailType: "DOCTOR_ACTIVATION" | "DOCTOR_WELCOME"; doctorName: string; recipientEmail: string }) { return platformPost<{ success: true; emailType: "DOCTOR_ACTIVATION" | "DOCTOR_WELCOME"; message: string }>("/v1/platform/email-tests", value); }
+export function listPresentationTemplates() { return platformRequest<{ items: PresentationTemplate[] }>("/v1/platform/presentation/templates"); }
+export function listPresentationCapabilities() { return platformRequest<{ items: PresentationCapability[] }>("/v1/platform/presentation/capabilities"); }
+export function setPresentationCapabilityDefault(key: string, defaultEnabled: boolean) { return platformPatch<{ capability: PresentationCapability }>(`/v1/platform/presentation/capabilities/${encodeURIComponent(key)}/default`, { defaultEnabled }); }
+export function listPresentationEntitlements() { return platformRequest<{ items: PresentationEntitlement[] }>("/v1/platform/presentation/entitlements"); }
+export function createPresentationEntitlement(value: { subject: PresentationEntitlement["subject"]; capabilityKey: string; effect: "GRANT" | "DENY"; externalReference?: string }) { return platformPost<{ entitlement: PresentationEntitlement }>("/v1/platform/presentation/entitlements", value); }
+export function revokePresentationEntitlement(id: string) { return platformDelete<void>(`/v1/platform/presentation/entitlements/${encodeURIComponent(id)}`); }

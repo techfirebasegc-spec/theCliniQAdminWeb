@@ -21,6 +21,12 @@ export function platformPost<T>(path: string, body?: unknown): Promise<T> {
   return platformRequest<T>(path, { method: "POST", headers: body === undefined ? undefined : { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
 }
 
+export function platformPatch<T>(path: string, body: unknown): Promise<T> {
+  return platformRequest<T>(path, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+}
+
+export function platformDelete<T>(path: string): Promise<T> { return platformRequest<T>(path, { method: "DELETE" }); }
+
 export async function platformDownload(path: string): Promise<Blob> {
   const response = await fetch(url(path), { credentials: "include" });
   if (!response.ok) {
