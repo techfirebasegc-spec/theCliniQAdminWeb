@@ -93,6 +93,12 @@ function date(value: string | null) {
       }).format(new Date(value))
     : "—";
 }
+function CopyId({ label, value }: { label: string; value: string | null }) {
+  if (!value) return <span className="muted">Not available</span>;
+  return <span className="id-value"><code>{value}</code><Button type="button" variant="quiet" onClick={() => void navigator.clipboard.writeText(value)} aria-label={`Copy ${label}`}>Copy</Button></span>;
+}
+function DetailValue({ value }: { value: string | number | null | undefined }) { return value === null || value === undefined || value === "" ? <span className="muted">Not available</span> : <>{value}</>; }
+function ServiceTable({ items }: { items: PlatformClinic["services"] | PlatformDoctor["services"] }) { return items.length ? <div className="table-scroll"><table><thead><tr><th>Service</th><th>Offering</th><th>Version / price</th><th>Availability</th><th>Exposure</th></tr></thead><tbody>{items.map((service) => <tr key={service.id}><td><CopyId label="service offering ID" value={service.id} /></td><td><strong>{service.name}</strong><br /><StatusBadge value={service.status} /></td><td><DetailValue value={service.versionStatus} />{service.priceAmountMinor ? <small>{service.priceAmountMinor} {service.currency ?? ""}</small> : null}</td><td><StatusBadge value={service.availabilityStatus} /></td><td><StatusBadge value={service.exposureStatus} /></td></tr>)}</tbody></table></div> : <EmptyState title="No services recorded" detail="No service offerings are currently associated with this record." />; }
 function tone(status: string | null) {
   if (!status) return "neutral" as const;
   if (["ACTIVE", "ACCEPTED", "APPROVED", "VERIFIED", "PUBLISHED"].includes(status)) return "success" as const;
@@ -279,6 +285,8 @@ export function ClinicDetails({ clinicId }: { clinicId: string }) {
       </div>
       <Card>
         <dl className="detail-list">
+          <dt>Clinic ID</dt><dd><CopyId label="clinic ID" value={item.id} /></dd>
+          <dt>Tenant ID</dt><dd><CopyId label="tenant ID" value={item.tenantId} /></dd>
           <dt>Clinic status</dt>
           <dd>
             <Badge tone={tone(item.clinicStatus)}>{item.clinicStatus}</Badge>
@@ -289,7 +297,12 @@ export function ClinicDetails({ clinicId }: { clinicId: string }) {
           </dd>
           <dt>Owner</dt>
           <dd>{item.ownerEmail ?? "Not assigned"}</dd>
+          <dt>Owner onboarding</dt><dd><DetailValue value={item.invitationStatus} /> · <DetailValue value={item.ownerMembershipStatus} /></dd>
+          <dt>Public contact</dt><dd><DetailValue value={item.publicEmail} /> · <DetailValue value={item.publicPhone} /></dd>
+          <dt>Created / updated</dt><dd>{date(item.createdAt)} · {date(item.updatedAt)}</dd>
         </dl>
+        {item.address ? <p className="detail-copy">{item.address.line1}{item.address.line2 ? `, ${item.address.line2}` : ""}, {item.address.locality}, {item.address.region} {item.address.postalCode}, {item.address.countryCode}</p> : null}
+        {item.about ? <p className="detail-copy">{item.about}</p> : null}
         {item.clinicStatus === "DRAFT" ? (
           <div className="platform-control">
             <Button
@@ -305,6 +318,8 @@ export function ClinicDetails({ clinicId }: { clinicId: string }) {
           </div>
         ) : null}
       </Card>
+      <Card><div className="card-heading"><div><p className="eyebrow">Operating profile</p><h2>Hours and associated doctors</h2></div></div>{item.operatingHours.length ? <ul className="detail-list-compact">{item.operatingHours.map((hour) => <li key={hour.weekday}>Day {hour.weekday}: {hour.opensAt}–{hour.closesAt}</li>)}</ul> : <p className="muted">Operating hours are not available.</p>}{item.doctors.length ? <div className="record-links">{item.doctors.map((doctor) => <Link key={doctor.id} href={`/platform/doctors/${doctor.id}`}>{doctor.displayName ?? "Unnamed doctor"} · {doctor.connectionStatus}</Link>)}</div> : <p className="muted">No clinic-doctor associations are recorded.</p>}</Card>
+      <Card><div className="card-heading"><div><p className="eyebrow">Services and readiness</p><h2>Service catalogue</h2></div></div><ServiceTable items={item.services} /></Card>
       <ConfirmationDialog
         open={confirmActivation}
         onClose={() => setConfirmActivation(false)}
@@ -486,6 +501,8 @@ export function DoctorDetails({ doctorId }: { doctorId: string }) {
       </div>
       <Card>
         <dl className="detail-list">
+          <dt>Doctor profile ID</dt><dd><CopyId label="doctor profile ID" value={item.id} /></dd>
+          <dt>Account ID</dt><dd><CopyId label="doctor account ID" value={item.accountId} /></dd>
           <dt>Status</dt>
           <dd>
             <Badge tone={tone(item.status)}>{item.status}</Badge>
@@ -502,8 +519,16 @@ export function DoctorDetails({ doctorId }: { doctorId: string }) {
               ? item.clinicNames.join(", ")
               : "Not associated"}
           </dd>
+          <dt>Account status</dt><dd><StatusBadge value={item.accountStatus} /></dd>
+          <dt>Professional profile</dt><dd><DetailValue value={item.professionalTitle} /> · <DetailValue value={item.specialization} /> · <DetailValue value={item.yearsExperience === null ? null : `${item.yearsExperience} years`} /></dd>
+          <dt>Contact</dt><dd><DetailValue value={item.mobileNumber} /></dd>
+          <dt>Created by clinic</dt><dd>{item.createdByClinicId ? <Link href={`/platform/clinics/${item.createdByClinicId}`}>{item.createdByClinicId}</Link> : <span className="muted">Independent or not recorded</span>}</dd>
+          <dt>Created / updated</dt><dd>{date(item.createdAt)} · {date(item.updatedAt)}</dd>
         </dl>
+        {item.shortIntroduction ? <p className="detail-copy">{item.shortIntroduction}</p> : null}{item.biography ? <p className="detail-copy">{item.biography}</p> : null}
       </Card>
+      <Card><div className="card-heading"><div><p className="eyebrow">Professional information</p><h2>Qualifications and relationships</h2></div></div>{item.qualifications.length ? <ul className="detail-list-compact">{item.qualifications.map((qualification) => <li key={`${qualification.credential}-${qualification.institution}`}>{qualification.credential} · {qualification.institution}{qualification.completionYear ? ` (${qualification.completionYear})` : ""}</li>)}</ul> : <p className="muted">Qualifications are not available.</p>}<p><strong>Languages:</strong> {item.languages.length ? item.languages.join(", ") : "Not available"}</p>{item.clinics.length ? <div className="record-links">{item.clinics.map((clinic) => <Link key={clinic.id} href={`/platform/clinics/${clinic.id}`}>{clinic.displayName} · {clinic.connectionStatus}</Link>)}</div> : null}</Card>
+      <Card><div className="card-heading"><div><p className="eyebrow">Services and readiness</p><h2>Service catalogue</h2></div></div><ServiceTable items={item.services} /></Card>
       <VerificationReview doctorId={doctorId} onChanged={reload} />
       <DiscoveryControls
         subjectName={item.displayName ?? "this doctor"}
