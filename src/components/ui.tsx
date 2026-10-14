@@ -24,7 +24,19 @@ export function Tabs({ items, active, onChange }: { items: readonly { id: string
 export function DataTable({ children, className = "" }: { children: ReactNode; className?: string }) { return <div className={`table-scroll ${className}`}><table>{children}</table></div>; }
 export function StepIndicator({ steps, current }: { steps: readonly string[]; current: number }) { return <ol className="steps">{steps.map((step, index) => <li key={step} className={index === current ? "step step--active" : index < current ? "step step--complete" : "step"}><span>{index + 1}</span>{step}</li>)}</ol>; }
 export function Modal({ open, title, children, onClose }: { open: boolean; title: string; children: ReactNode; onClose: () => void }) { return open ? <div className="modal-backdrop" role="presentation"><section className="modal" role="dialog" aria-modal="true" aria-label={title}><header><strong>{title}</strong><Button variant="quiet" onClick={onClose} aria-label="Close">Close</Button></header>{children}</section></div> : null; }
-export function Drawer({ open, children, onClose }: { open: boolean; children: ReactNode; onClose: () => void }) { return open ? <div className="drawer-backdrop"><aside className="drawer">{children}<Button variant="quiet" onClick={onClose}>Close navigation</Button></aside></div> : null; }
+export function Drawer({ open, children, onClose }: { open: boolean; children: ReactNode; onClose: () => void }) {
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", closeOnEscape);
+    return () => { document.body.style.overflow = previousOverflow; document.removeEventListener("keydown", closeOnEscape); };
+  }, [onClose, open]);
+
+  if (!open) return null;
+  return <div className="drawer-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><aside className="drawer" role="dialog" aria-modal="true" aria-label="Primary navigation" onMouseDown={(event) => event.stopPropagation()}><header className="drawer-header"><span>Menu</span><Button variant="quiet" onClick={onClose} aria-label="Close navigation" autoFocus>Close</Button></header><div className="drawer-body">{children}</div></aside></div>;
+}
 export function Toast({ message }: { message: string | null }) { return message ? <p className="toast" role="status">{message}</p> : null; }
 export function ConfirmationDialog({ open, onConfirm, onClose, children }: { open: boolean; onConfirm: () => void; onClose: () => void; children: ReactNode }) { return <Modal open={open} title="Confirm action" onClose={onClose}><p>{children}</p><div className="dialog-actions"><Button onClick={onConfirm}>Confirm</Button><Button variant="secondary" onClick={onClose}>Cancel</Button></div></Modal>; }
 export function useToast() { const [message, setMessage] = useState<string | null>(null); useEffect(() => { if (!message) return; const timer = window.setTimeout(() => setMessage(null), 3000); return () => window.clearTimeout(timer); }, [message]); return { message, show: setMessage }; }
