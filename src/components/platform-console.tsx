@@ -56,6 +56,7 @@ import {
 import { PlatformApiError } from "../lib/platform-api/client";
 import { firebaseAuth } from "../lib/firebase";
 import { sendPasswordResetEmail } from "firebase/auth";
+import dashboardStyles from "./platform-dashboard.module.css";
 import {
   Badge,
   Breadcrumbs,
@@ -93,6 +94,12 @@ function date(value: string | null) {
       }).format(new Date(value))
     : "—";
 }
+function CopyId({ label, value }: { label: string; value: string | null }) {
+  if (!value) return <span className="muted">Not available</span>;
+  return <span className="id-value"><code>{value}</code><Button type="button" variant="quiet" onClick={() => void navigator.clipboard.writeText(value)} aria-label={`Copy ${label}`}>Copy</Button></span>;
+}
+function DetailValue({ value }: { value: string | number | null | undefined }) { return value === null || value === undefined || value === "" ? <span className="muted">Not available</span> : <>{value}</>; }
+function ServiceTable({ items }: { items: PlatformClinic["services"] | PlatformDoctor["services"] }) { return items.length ? <div className="table-scroll"><table><thead><tr><th>Service</th><th>Offering</th><th>Version / price</th><th>Availability</th><th>Exposure</th></tr></thead><tbody>{items.map((service) => <tr key={service.id}><td><CopyId label="service offering ID" value={service.id} /></td><td><strong>{service.name}</strong><br /><StatusBadge value={service.status} /></td><td><DetailValue value={service.versionStatus} />{service.priceAmountMinor ? <small>{service.priceAmountMinor} {service.currency ?? ""}</small> : null}</td><td><StatusBadge value={service.availabilityStatus} /></td><td><StatusBadge value={service.exposureStatus} /></td></tr>)}</tbody></table></div> : <EmptyState title="No services recorded" detail="No service offerings are currently associated with this record." />; }
 function tone(status: string | null) {
   if (!status) return "neutral" as const;
   if (["ACTIVE", "ACCEPTED", "APPROVED", "VERIFIED", "PUBLISHED"].includes(status)) return "success" as const;
@@ -114,35 +121,62 @@ function Page({
   );
 }
 
+type DashboardMetricIcon = "clinic" | "doctor" | "patient" | "invitation" | "appointment";
+function DashboardIcon({ icon }: { icon: DashboardMetricIcon }) {
+  const paths: Record<DashboardMetricIcon, React.ReactNode> = {
+    clinic: <><path d="M4 21V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v16M2 21h20" /><path d="M9 8h4M11 6v4M8 15h1M12 15h1M16 15h1" /></>,
+    doctor: <><circle cx="12" cy="8" r="3.5" /><path d="M5 21c.6-4 3-6 7-6s6.4 2 7 6" /><path d="M18 5v5M15.5 7.5h5" /></>,
+    patient: <><circle cx="12" cy="8" r="3.5" /><path d="M5 21c.6-4 3-6 7-6s6.4 2 7 6" /></>,
+    invitation: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m4 7 8 6 8-6" /></>,
+    appointment: <><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16" /><path d="M12 14v3l2 1" /></>,
+  };
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[icon]}</svg>;
+}
+
 export function PlatformDashboard() {
   const [data, setData] = useState<PlatformMetrics | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshDashboard = useCallback(() => {
+    setRefreshing(true);
+    setError(null);
+    void platformDashboard()
+      .then(setData)
+      .catch((cause) => setError(errorMessage(cause)))
+      .finally(() => setRefreshing(false));
+  }, []);
   useEffect(() => {
     void platformDashboard()
       .then(setData)
       .catch((cause) => setError(errorMessage(cause)));
   }, []);
-  if (error) return <ErrorState detail={error} />;
-  if (!data) return <LoadingState label="Loading platform overview…" />;
+  const refresh = <Button type="button" variant="secondary" onClick={refreshDashboard} disabled={refreshing}>{refreshing ? "Refreshing…" : "Refresh"}</Button>;
+  if (error && !data) return <div className={dashboardStyles.dashboard}><Page crumbs={["Platform Admin", "Dashboard"]}><PageHeader eyebrow="The CliniQ Platform" title="Platform Dashboard" description="A cross-tenant operational overview using the platform metrics available to this workspace." action={refresh} /><ErrorState detail={error} /></Page></div>;
+  if (!data) return <div className={dashboardStyles.dashboard}><Page crumbs={["Platform Admin", "Dashboard"]}><PageHeader eyebrow="The CliniQ Platform" title="Platform Dashboard" description="A cross-tenant operational overview using the platform metrics available to this workspace." /><LoadingState label="Loading platform overview…" /></Page></div>;
   const metrics = [
-    ["Clinics", data.clinics],
-    ["Doctors", data.doctors],
-    ["Patients", data.patients],
-    ["Active invitations", data.activeInvitations],
-    ["Upcoming appointments", data.upcomingAppointments],
+    { label: "Clinics", value: data.clinics, href: "/platform/clinics", icon: "clinic" as const },
+    { label: "Doctors", value: data.doctors, href: "/platform/doctors", icon: "doctor" as const },
+    { label: "Patients", value: data.patients, icon: "patient" as const },
+    { label: "Active invitations", value: data.activeInvitations, href: "/platform/invitations", icon: "invitation" as const },
+    { label: "Upcoming appointments", value: data.upcomingAppointments, icon: "appointment" as const },
   ];
+  const isEmpty = metrics.every((metric) => metric.value === 0);
   return (
+    <div className={dashboardStyles.dashboard}>
     <Page crumbs={["Platform Admin", "Dashboard"]}>
-      <PageHeader eyebrow="The CliniQ Platform" title="Platform Dashboard" description="A cross-tenant operational overview using the platform metrics available to this workspace." />
-      <section className="metrics platform-metrics">
-        {metrics.map(([label, value]) => (
-          <Card className="metric" key={String(label)}>
-            <p>{label}</p>
-            <strong>{value}</strong>
+      <PageHeader eyebrow="The CliniQ Platform" title="Platform Dashboard" description="A cross-tenant operational overview using the platform metrics available to this workspace." action={refresh} />
+      {error ? <ErrorState detail={`${error} Showing the most recently loaded overview.`} /> : null}
+      {isEmpty ? <EmptyState title="No platform activity yet" detail="The dashboard will show platform totals once records are available." /> : <section className={dashboardStyles.metricGrid} aria-label="Platform operational metrics">
+        {metrics.map((metric) => (
+          <Card className={`${dashboardStyles.metricCard}${metric.icon === "appointment" ? ` ${dashboardStyles.appointmentMetric}` : ""}`} key={metric.label}>
+            <div className={dashboardStyles.metricHeader}><span className={dashboardStyles.metricIcon}><DashboardIcon icon={metric.icon} /></span><p>{metric.label}</p></div>
+            <strong>{metric.value}</strong>
+            {metric.href ? <Link href={metric.href} className={dashboardStyles.metricLink}>View {metric.label.toLocaleLowerCase()}<span aria-hidden="true">→</span></Link> : null}
           </Card>
         ))}
-      </section>
+      </section>}
     </Page>
+    </div>
   );
 }
 
@@ -279,6 +313,8 @@ export function ClinicDetails({ clinicId }: { clinicId: string }) {
       </div>
       <Card>
         <dl className="detail-list">
+          <dt>Clinic ID</dt><dd><CopyId label="clinic ID" value={item.id} /></dd>
+          <dt>Tenant ID</dt><dd><CopyId label="tenant ID" value={item.tenantId} /></dd>
           <dt>Clinic status</dt>
           <dd>
             <Badge tone={tone(item.clinicStatus)}>{item.clinicStatus}</Badge>
@@ -289,7 +325,12 @@ export function ClinicDetails({ clinicId }: { clinicId: string }) {
           </dd>
           <dt>Owner</dt>
           <dd>{item.ownerEmail ?? "Not assigned"}</dd>
+          <dt>Owner onboarding</dt><dd><DetailValue value={item.invitationStatus} /> · <DetailValue value={item.ownerMembershipStatus} /></dd>
+          <dt>Public contact</dt><dd><DetailValue value={item.publicEmail} /> · <DetailValue value={item.publicPhone} /></dd>
+          <dt>Created / updated</dt><dd>{date(item.createdAt)} · {date(item.updatedAt)}</dd>
         </dl>
+        {item.address ? <p className="detail-copy">{item.address.line1}{item.address.line2 ? `, ${item.address.line2}` : ""}, {item.address.locality}, {item.address.region} {item.address.postalCode}, {item.address.countryCode}</p> : null}
+        {item.about ? <p className="detail-copy">{item.about}</p> : null}
         {item.clinicStatus === "DRAFT" ? (
           <div className="platform-control">
             <Button
@@ -305,6 +346,8 @@ export function ClinicDetails({ clinicId }: { clinicId: string }) {
           </div>
         ) : null}
       </Card>
+      <Card><div className="card-heading"><div><p className="eyebrow">Operating profile</p><h2>Hours and associated doctors</h2></div></div>{item.operatingHours.length ? <ul className="detail-list-compact">{item.operatingHours.map((hour) => <li key={hour.weekday}>Day {hour.weekday}: {hour.opensAt}–{hour.closesAt}</li>)}</ul> : <p className="muted">Operating hours are not available.</p>}{item.doctors.length ? <div className="record-links">{item.doctors.map((doctor) => <Link key={doctor.id} href={`/platform/doctors/${doctor.id}`}>{doctor.displayName ?? "Unnamed doctor"} · {doctor.connectionStatus}</Link>)}</div> : <p className="muted">No clinic-doctor associations are recorded.</p>}</Card>
+      <Card><div className="card-heading"><div><p className="eyebrow">Services and readiness</p><h2>Service catalogue</h2></div></div><ServiceTable items={item.services} /></Card>
       <ConfirmationDialog
         open={confirmActivation}
         onClose={() => setConfirmActivation(false)}
@@ -486,6 +529,8 @@ export function DoctorDetails({ doctorId }: { doctorId: string }) {
       </div>
       <Card>
         <dl className="detail-list">
+          <dt>Doctor profile ID</dt><dd><CopyId label="doctor profile ID" value={item.id} /></dd>
+          <dt>Account ID</dt><dd><CopyId label="doctor account ID" value={item.accountId} /></dd>
           <dt>Status</dt>
           <dd>
             <Badge tone={tone(item.status)}>{item.status}</Badge>
@@ -502,8 +547,16 @@ export function DoctorDetails({ doctorId }: { doctorId: string }) {
               ? item.clinicNames.join(", ")
               : "Not associated"}
           </dd>
+          <dt>Account status</dt><dd><StatusBadge value={item.accountStatus} /></dd>
+          <dt>Professional profile</dt><dd><DetailValue value={item.professionalTitle} /> · <DetailValue value={item.specialization} /> · <DetailValue value={item.yearsExperience === null ? null : `${item.yearsExperience} years`} /></dd>
+          <dt>Contact</dt><dd><DetailValue value={item.mobileNumber} /></dd>
+          <dt>Created by clinic</dt><dd>{item.createdByClinicId ? <Link href={`/platform/clinics/${item.createdByClinicId}`}>{item.createdByClinicId}</Link> : <span className="muted">Independent or not recorded</span>}</dd>
+          <dt>Created / updated</dt><dd>{date(item.createdAt)} · {date(item.updatedAt)}</dd>
         </dl>
+        {item.shortIntroduction ? <p className="detail-copy">{item.shortIntroduction}</p> : null}{item.biography ? <p className="detail-copy">{item.biography}</p> : null}
       </Card>
+      <Card><div className="card-heading"><div><p className="eyebrow">Professional information</p><h2>Qualifications and relationships</h2></div></div>{item.qualifications.length ? <ul className="detail-list-compact">{item.qualifications.map((qualification) => <li key={`${qualification.credential}-${qualification.institution}`}>{qualification.credential} · {qualification.institution}{qualification.completionYear ? ` (${qualification.completionYear})` : ""}</li>)}</ul> : <p className="muted">Qualifications are not available.</p>}<p><strong>Languages:</strong> {item.languages.length ? item.languages.join(", ") : "Not available"}</p>{item.clinics.length ? <div className="record-links">{item.clinics.map((clinic) => <Link key={clinic.id} href={`/platform/clinics/${clinic.id}`}>{clinic.displayName} · {clinic.connectionStatus}</Link>)}</div> : null}</Card>
+      <Card><div className="card-heading"><div><p className="eyebrow">Services and readiness</p><h2>Service catalogue</h2></div></div><ServiceTable items={item.services} /></Card>
       <VerificationReview doctorId={doctorId} onChanged={reload} />
       <DiscoveryControls
         subjectName={item.displayName ?? "this doctor"}
