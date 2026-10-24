@@ -56,6 +56,7 @@ import {
 import { PlatformApiError } from "../lib/platform-api/client";
 import { firebaseAuth } from "../lib/firebase";
 import { sendPasswordResetEmail } from "firebase/auth";
+import dashboardStyles from "./platform-dashboard.module.css";
 import {
   Badge,
   Breadcrumbs,
@@ -120,35 +121,62 @@ function Page({
   );
 }
 
+type DashboardMetricIcon = "clinic" | "doctor" | "patient" | "invitation" | "appointment";
+function DashboardIcon({ icon }: { icon: DashboardMetricIcon }) {
+  const paths: Record<DashboardMetricIcon, React.ReactNode> = {
+    clinic: <><path d="M4 21V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v16M2 21h20" /><path d="M9 8h4M11 6v4M8 15h1M12 15h1M16 15h1" /></>,
+    doctor: <><circle cx="12" cy="8" r="3.5" /><path d="M5 21c.6-4 3-6 7-6s6.4 2 7 6" /><path d="M18 5v5M15.5 7.5h5" /></>,
+    patient: <><circle cx="12" cy="8" r="3.5" /><path d="M5 21c.6-4 3-6 7-6s6.4 2 7 6" /></>,
+    invitation: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m4 7 8 6 8-6" /></>,
+    appointment: <><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16" /><path d="M12 14v3l2 1" /></>,
+  };
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[icon]}</svg>;
+}
+
 export function PlatformDashboard() {
   const [data, setData] = useState<PlatformMetrics | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshDashboard = useCallback(() => {
+    setRefreshing(true);
+    setError(null);
+    void platformDashboard()
+      .then(setData)
+      .catch((cause) => setError(errorMessage(cause)))
+      .finally(() => setRefreshing(false));
+  }, []);
   useEffect(() => {
     void platformDashboard()
       .then(setData)
       .catch((cause) => setError(errorMessage(cause)));
   }, []);
-  if (error) return <ErrorState detail={error} />;
-  if (!data) return <LoadingState label="Loading platform overview…" />;
+  const refresh = <Button type="button" variant="secondary" onClick={refreshDashboard} disabled={refreshing}>{refreshing ? "Refreshing…" : "Refresh"}</Button>;
+  if (error && !data) return <div className={dashboardStyles.dashboard}><Page crumbs={["Platform Admin", "Dashboard"]}><PageHeader eyebrow="The CliniQ Platform" title="Platform Dashboard" description="A cross-tenant operational overview using the platform metrics available to this workspace." action={refresh} /><ErrorState detail={error} /></Page></div>;
+  if (!data) return <div className={dashboardStyles.dashboard}><Page crumbs={["Platform Admin", "Dashboard"]}><PageHeader eyebrow="The CliniQ Platform" title="Platform Dashboard" description="A cross-tenant operational overview using the platform metrics available to this workspace." /><LoadingState label="Loading platform overview…" /></Page></div>;
   const metrics = [
-    ["Clinics", data.clinics],
-    ["Doctors", data.doctors],
-    ["Patients", data.patients],
-    ["Active invitations", data.activeInvitations],
-    ["Upcoming appointments", data.upcomingAppointments],
+    { label: "Clinics", value: data.clinics, href: "/platform/clinics", icon: "clinic" as const },
+    { label: "Doctors", value: data.doctors, href: "/platform/doctors", icon: "doctor" as const },
+    { label: "Patients", value: data.patients, icon: "patient" as const },
+    { label: "Active invitations", value: data.activeInvitations, href: "/platform/invitations", icon: "invitation" as const },
+    { label: "Upcoming appointments", value: data.upcomingAppointments, icon: "appointment" as const },
   ];
+  const isEmpty = metrics.every((metric) => metric.value === 0);
   return (
+    <div className={dashboardStyles.dashboard}>
     <Page crumbs={["Platform Admin", "Dashboard"]}>
-      <PageHeader eyebrow="The CliniQ Platform" title="Platform Dashboard" description="A cross-tenant operational overview using the platform metrics available to this workspace." />
-      <section className="metrics platform-metrics">
-        {metrics.map(([label, value]) => (
-          <Card className="metric" key={String(label)}>
-            <p>{label}</p>
-            <strong>{value}</strong>
+      <PageHeader eyebrow="The CliniQ Platform" title="Platform Dashboard" description="A cross-tenant operational overview using the platform metrics available to this workspace." action={refresh} />
+      {error ? <ErrorState detail={`${error} Showing the most recently loaded overview.`} /> : null}
+      {isEmpty ? <EmptyState title="No platform activity yet" detail="The dashboard will show platform totals once records are available." /> : <section className={dashboardStyles.metricGrid} aria-label="Platform operational metrics">
+        {metrics.map((metric) => (
+          <Card className={`${dashboardStyles.metricCard}${metric.icon === "appointment" ? ` ${dashboardStyles.appointmentMetric}` : ""}`} key={metric.label}>
+            <div className={dashboardStyles.metricHeader}><span className={dashboardStyles.metricIcon}><DashboardIcon icon={metric.icon} /></span><p>{metric.label}</p></div>
+            <strong>{metric.value}</strong>
+            {metric.href ? <Link href={metric.href} className={dashboardStyles.metricLink}>View {metric.label.toLocaleLowerCase()}<span aria-hidden="true">→</span></Link> : null}
           </Card>
         ))}
-      </section>
+      </section>}
     </Page>
+    </div>
   );
 }
 
