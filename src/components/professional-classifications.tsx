@@ -5,8 +5,14 @@ import { Alert, Button, Card, ConfirmationDialog, DataTable, EmptyState, ErrorSt
 
 export function ProfessionalClassificationsPage() {
   const [doctors, setDoctors] = useState<PlatformDoctor[]>([]); const [catalogue, setCatalogue] = useState<ProfessionalClassification[]>([]); const [history, setHistory] = useState<ProfessionalClassificationAssignment[]>([]); const [doctorId, setDoctorId] = useState(""); const [code, setCode] = useState(""); const [reason, setReason] = useState(""); const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null); const [revoke, setRevoke] = useState<ProfessionalClassificationAssignment | null>(null); const { message, show } = useToast();
-  const load = async () => { setLoading(true); setError(null); try { const [doctorResult, classifications] = await Promise.all([listPlatformDoctors(), listProfessionalClassifications()]); setDoctors(doctorResult.items); setCatalogue(classifications.items); if (doctorId) setHistory((await listDoctorProfessionalClassifications(doctorId)).items); } catch { setError("Professional classifications could not be loaded."); } finally { setLoading(false); } };
-  useEffect(() => { void load(); }, []); // initial platform-authorized data only
+  useEffect(() => {
+    let active = true;
+    void Promise.all([listPlatformDoctors(), listProfessionalClassifications()])
+      .then(([doctorResult, classifications]) => { if (active) { setDoctors(doctorResult.items); setCatalogue(classifications.items); } })
+      .catch(() => { if (active) setError("Professional classifications could not be loaded."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []); // initial platform-authorized data only
   const selectDoctor = async (id: string) => { setDoctorId(id); setHistory([]); if (!id) return; try { setHistory((await listDoctorProfessionalClassifications(id)).items); } catch { setError("Classification history could not be loaded."); } };
   const assign = async () => { if (!doctorId || !code || reason.trim().length < 3) return; try { await assignProfessionalClassification(doctorId, code, reason); setReason(""); await selectDoctor(doctorId); show("Classification assigned."); } catch { setError("Classification could not be assigned. The clinician must be active and professionally verified, and duplicate active assignments are not allowed."); } };
   const confirmRevoke = async () => { if (!revoke || reason.trim().length < 3) return; try { await revokeProfessionalClassification(revoke.doctorProfileId, revoke.classification.code, reason); setRevoke(null); setReason(""); await selectDoctor(doctorId); show("Classification revoked; its history remains available."); } catch { setError("Classification could not be revoked."); } };
