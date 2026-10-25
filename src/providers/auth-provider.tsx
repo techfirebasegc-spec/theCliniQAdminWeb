@@ -49,6 +49,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [platformSessionEstablished, setPlatformSessionEstablished] = useState(false);
   const exchange = useRef<Promise<void> | null>(null);
+  const pathnameRef = useRef(pathname);
+
+  useEffect(() => { pathnameRef.current = pathname; }, [pathname]);
 
   const establish = useCallback(async (nextUser: User) => {
     if (exchange.current) return exchange.current;
@@ -73,14 +76,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!active) return;
         setUser(nextUser);
         if (!nextUser) { setPlatformSessionEstablished(false); setLoading(false); return; }
-        if (pathname === "/accept-invitation") { setPlatformSessionEstablished(false); setLoading(false); return; }
+        if (pathnameRef.current === "/accept-invitation") { setPlatformSessionEstablished(false); setLoading(false); return; }
         try { await establish(nextUser); } catch { /* The state exposes a safe error. */ } finally { if (active) setLoading(false); }
       });
     } catch (cause) {
       queueMicrotask(() => { if (active) { setError(cause instanceof Error ? cause.message : "Unable to initialize Firebase authentication."); setLoading(false); } });
     }
     return () => { active = false; unsubscribe?.(); };
-  }, [establish, pathname]);
+  }, [establish]);
 
   const authenticate = useCallback(async (operation: () => Promise<{ user: User }>, fallback: string) => {
     setLoading(true);
