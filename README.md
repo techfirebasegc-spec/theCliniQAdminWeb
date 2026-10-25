@@ -104,3 +104,23 @@ Errors are surfaced as `PlatformApiError` (with `status`, `code`, and `requestId
 - `CliniQPlatform` — API, database, and shared packages.
 - `theCliniQProviderWeb` — clinic/doctor provider portal.
 - `theCliniQPatientWeb` — public patient-facing site.
+
+## Individual context and system boundaries
+
+This repository is the administrative frontend. The separate Platform API implements entitlement checks, sessions, business rules and database access; hiding a control in this frontend is not authorization. Tenant-scoped views and Platform Admin operations have different contexts, and access depends on API authorization.
+
+| Related repository | Relationship |
+| --- | --- |
+| [CliniQPlatform](https://github.com/techfirebasegc-spec/theCliniQPlatform) | Backend for admin and tenant sessions, administrative endpoints and platform data. |
+| [theCliniQPatientWeb](https://github.com/techfirebasegc-spec/theCliniQPatientWeb) | Public/patient application consuming the same platform's public and patient API. |
+| [theCliniQProviderWeb](https://github.com/techfirebasegc-spec/theCliniQProviderWeb) | Separate clinic/doctor workspace. |
+| [theCliniQDocPortal](https://github.com/techfirebasegc-spec/theCliniQDocPortal) | Separate documentation portal; it checks Platform Admin eligibility through the Platform API and maintains its own portal session and database. |
+
+The admin API client exchanges Firebase tokens through `/v1/auth/admin/firebase/session`; its tenant session flow uses `/v1/auth/tenant/firebase/session`. The frontend sends API requests with credentials. Actual data visibility and permissions are determined by the API and the user's context.
+
+## Repository and deployment notes
+
+- Local directory: `D:\project\theCliniQAdminWeb`; repository: [techfirebasegc-spec/theCliniQAdminWeb](https://github.com/techfirebasegc-spec/theCliniQAdminWeb).
+- The project has its own `app/`, `src/`, `public/`, configuration and lockfiles. Its package scripts define `dev`, `build`, `lint`, and `typecheck`; there is no package-level `test` or `start` script.
+- Keep local environment files and credentials out of Git. API base URL, Firebase settings, cookie behavior and CORS must be appropriate for each environment.
+- Production service, hostname, port, deployment path and rollback process must be verified separately. `projectarchitecture.md` describes cross-project context but is not evidence of current VPS state.
