@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   activatePlatformClinic,
   approveClinicApplication,
@@ -17,6 +17,7 @@ import {
   inviteDoctor,
   listClinicApplications,
   listClinicCreatedDoctors,
+  listClinicCreatedDoctorEmailOperations,
   listReadyClinicCreatedDoctors,
   listDoctorApplications,
   listDoctorInvitations,
@@ -32,8 +33,7 @@ import {
   rejectDoctorApplication,
   rejectDoctorVerification,
   resendDoctorInvitation,
-  resendClinicCreatedDoctorActivation,
-  recordClinicCreatedDoctorActivationEmail,
+  retryClinicCreatedDoctorEmailOperation,
   resendOwnerInvitation,
   sendTransactionalEmailTest,
   reviewClinicCreatedDoctor,
@@ -43,6 +43,7 @@ import {
   revokeOwnerInvitation,
   type ClinicApplication,
   type ClinicCreatedDoctor,
+  type ClinicCreatedDoctorEmailOperation,
   type DoctorApplication,
   type DoctorVerificationSubmission,
   type OwnerInvitation,
@@ -54,8 +55,6 @@ import {
   type VerificationEvidence,
 } from "../lib/platform-api/platform-admin";
 import { PlatformApiError } from "../lib/platform-api/client";
-import { firebaseAuth } from "../lib/firebase";
-import { sendPasswordResetEmail } from "firebase/auth";
 import dashboardStyles from "./platform-dashboard.module.css";
 import {
   Badge,
@@ -715,13 +714,26 @@ function VerificationReview({
 export function ClinicCreatedDoctorsPage() {
   const [items, setItems] = useState<ClinicCreatedDoctor[] | null>(null);
   const [clinics, setClinics] = useState<Record<string, string>>({});
+  const [operations, setOperations] = useState<Record<string, ClinicCreatedDoctorEmailOperation[] | undefined>>({});
+  const [operationLoading, setOperationLoading] = useState<Record<string, boolean>>({});
+  const [operationErrors, setOperationErrors] = useState<Record<string, string | null>>({});
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [deliveryError, setDeliveryError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [activationCooldowns, setActivationCooldowns] = useState<Record<string, boolean>>({});
+  const [retrying, setRetrying] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const cooldownTimeouts = useRef<Record<string, number>>({});
+  const loadOperations = useCallback(async (doctorId: string) => {
+    setOperationLoading((current) => ({ ...current, [doctorId]: true }));
+    setOperationErrors((current) => ({ ...current, [doctorId]: null }));
+    try {
+      const result = await listClinicCreatedDoctorEmailOperations(doctorId);
+      setOperations((current) => ({ ...current, [doctorId]: result.items }));
+    } catch (cause) {
+      setOperationErrors((current) => ({ ...current, [doctorId]: errorMessage(cause) }));
+    } finally {
+      setOperationLoading((current) => ({ ...current, [doctorId]: false }));
+    }
+  }, []);
   const load = useCallback(async () => {
     try {
       setError(null);
@@ -730,56 +742,21 @@ export function ClinicCreatedDoctorsPage() {
         listReadyClinicCreatedDoctors(),
         listPlatformClinics(),
       ]);
-        setItems([...pending.items, ...ready.items]);
+        const doctors = [...pending.items, ...ready.items];
+        setItems(doctors);
         setClinics(
           Object.fromEntries(
             clinicResult.items.map((clinic) => [clinic.id, clinic.displayName]),
           ),
         );
+        await Promise.all(doctors.filter((doctor) => doctor.status === "APPROVED").map((doctor) => loadOperations(doctor.id)));
     } catch (cause) {
       setError(errorMessage(cause));
     }
-  }, []);
+  }, [loadOperations]);
   useEffect(() => {
-    let cancelled = false;
-    void Promise.all([
-      listClinicCreatedDoctors(),
-      listReadyClinicCreatedDoctors(),
-      listPlatformClinics(),
-    ])
-      .then(([pending, ready, clinicResult]) => {
-        if (cancelled) return;
-        setItems([...pending.items, ...ready.items]);
-        setClinics(
-          Object.fromEntries(
-            clinicResult.items.map((clinic) => [clinic.id, clinic.displayName]),
-          ),
-        );
-      })
-      .catch((cause) => {
-        if (!cancelled) setError(errorMessage(cause));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  useEffect(
-    () => () => {
-      Object.values(cooldownTimeouts.current).forEach((timeout) =>
-        window.clearTimeout(timeout),
-      );
-    },
-    [],
-  );
-  const beginActivationCooldown = useCallback((doctorId: string) => {
-    const previousTimeout = cooldownTimeouts.current[doctorId];
-    if (previousTimeout !== undefined) window.clearTimeout(previousTimeout);
-    setActivationCooldowns((current) => ({ ...current, [doctorId]: true }));
-    cooldownTimeouts.current[doctorId] = window.setTimeout(() => {
-      delete cooldownTimeouts.current[doctorId];
-      setActivationCooldowns((current) => ({ ...current, [doctorId]: false }));
-    }, 60_000);
-  }, []);
+    void load();
+  }, [load]);
   async function review(
     item: ClinicCreatedDoctor,
     decision: "APPROVED" | "REJECTED",
@@ -792,28 +769,14 @@ export function ClinicCreatedDoctorsPage() {
     setBusy(item.id);
     setError(null);
     setNotice(null);
-    setDeliveryError(null);
     try {
-      const reviewed = await reviewClinicCreatedDoctor(
+      await reviewClinicCreatedDoctor(
         item.id,
         decision,
         rejectionReason,
       );
       if (decision === "APPROVED") {
-        try {
-          await sendPasswordResetEmail(firebaseAuth(), reviewed.doctor.email);
-          await recordClinicCreatedDoctorActivationEmail(reviewed.doctor.id, "REQUESTED");
-          setNotice(
-            "Doctor approved. Firebase sent the activation password-reset email.",
-          );
-        } catch (cause) {
-          const code =
-            typeof cause === "object" && cause !== null && "code" in cause
-              ? String(cause.code)
-              : "";
-          try { await recordClinicCreatedDoctorActivationEmail(reviewed.doctor.id, "FAILED"); } catch { /* The approval and accepted activation request remain separately auditable. */ }
-          setDeliveryError(code === "auth/user-not-found" ? "Doctor approved, but Firebase could not send the activation email. The account remains ready for resend." : "Doctor approved, but Firebase could not send the activation email. The account remains ready for resend.");
-        }
+        setNotice("Doctor approved. Password-reset and activation-email operations were scheduled for backend processing.");
       }
       void load();
     } catch (cause) {
@@ -822,15 +785,21 @@ export function ClinicCreatedDoctorsPage() {
       setBusy(null);
     }
   }
-  async function resend(item: ClinicCreatedDoctor) {
-    if (activationCooldowns[item.id]) return;
-    setBusy(item.id); setError(null); setNotice(null); setDeliveryError(null);
+  async function retryOperation(item: ClinicCreatedDoctor, operation: ClinicCreatedDoctorEmailOperation) {
+    if (!operation.retryEligible || retrying !== null) return;
+    const key = `${item.id}:${operation.id}`;
+    setRetrying(key);
+    setError(null);
+    setNotice(null);
     try {
-      const response = await resendClinicCreatedDoctorActivation(item.id);
-      beginActivationCooldown(item.id);
-      try { await sendPasswordResetEmail(firebaseAuth(), response.doctor.email); await recordClinicCreatedDoctorActivationEmail(item.id, "REQUESTED"); setNotice("Firebase sent another activation password-reset email."); }
-      catch { try { await recordClinicCreatedDoctorActivationEmail(item.id, "FAILED"); } catch { /* The accepted resend request remains auditable. */ } setDeliveryError("Firebase could not request the activation email. The account remains ready for resend."); }
-    } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(null); }
+      await retryClinicCreatedDoctorEmailOperation(item.id, operation.id);
+      setNotice(`${operationName(operation.operationType)} was queued for another backend attempt.`);
+      await loadOperations(item.id);
+    } catch (cause) {
+      setOperationErrors((current) => ({ ...current, [item.id]: errorMessage(cause) }));
+    } finally {
+      setRetrying(null);
+    }
   }
   if (error) return <ErrorState detail={error} />;
   if (!items) return <LoadingState label="Loading clinic-created doctors…" />;
@@ -840,7 +809,6 @@ export function ClinicCreatedDoctorsPage() {
       <PageHeader eyebrow="Doctor onboarding" title="Clinic-created Doctors" description="Created by a clinic. Platform approval activates the existing account and relationship; it is not professional verification."><Search label="Search pending doctors or clinics" value={query} onChange={(event) => setQuery(event.target.value)} /></PageHeader>
       {process.env.NODE_ENV === "development" ? <EmailTesting /> : null}
       {notice ? <p className="alert">{notice}</p> : null}
-      {deliveryError ? <p className="alert">{deliveryError}</p> : null}
       {filteredItems.length ? (
         <section className="cards">
           {filteredItems.map((item) => (
@@ -869,6 +837,15 @@ export function ClinicCreatedDoctorsPage() {
                 <dd>Not decided by this approval</dd>
               </dl>
               <p className="control-help">Platform status: {item.status === "PENDING" ? "Pending approval." : "Approved and ready for password setup."} This review does not professionally verify the doctor.</p>
+              {item.status === "APPROVED" ? <ClinicCreatedDoctorEmailOperations
+                doctor={item}
+                items={operations[item.id]}
+                loading={operationLoading[item.id] === true}
+                error={operationErrors[item.id]}
+                retrying={retrying}
+                onRefresh={() => void loadOperations(item.id)}
+                onRetry={(operation) => void retryOperation(item, operation)}
+              /> : null}
               <span className="row-actions">
                 {item.status === "PENDING" ? <><Button
                   disabled={busy !== null}
@@ -882,7 +859,7 @@ export function ClinicCreatedDoctorsPage() {
                   onClick={() => void review(item, "REJECTED")}
                 >
                   Reject
-                </Button></> : <Button disabled={busy !== null || activationCooldowns[item.id]} onClick={() => void resend(item)}>{busy === item.id ? "Sending…" : activationCooldowns[item.id] ? "Resend available shortly" : "Resend activation email"}</Button>}
+                </Button></> : null}
               </span>
             </Card>
           ))}
@@ -893,6 +870,19 @@ export function ClinicCreatedDoctorsPage() {
     </Page>
   );
 }
+
+function ClinicCreatedDoctorEmailOperations({ doctor, items, loading, error, retrying, onRefresh, onRetry }: { doctor: ClinicCreatedDoctor; items: ClinicCreatedDoctorEmailOperation[] | undefined; loading: boolean; error: string | null | undefined; retrying: string | null; onRefresh: () => void; onRetry: (operation: ClinicCreatedDoctorEmailOperation) => void }) {
+  return <section aria-label={`Email operations for ${doctor.displayName}`}>
+    <div className="card-heading"><div><p className="eyebrow">Onboarding email operations</p><h3>Password setup and Doctor Portal activation are tracked independently</h3></div><Button type="button" variant="quiet" onClick={onRefresh} disabled={loading || retrying !== null}>{loading ? "Refreshing…" : "Refresh"}</Button></div>
+    {loading && !items ? <LoadingState label="Loading email-operation status…" /> : null}
+    {error ? <ErrorState detail={error} /> : null}
+    {!loading && !error && items?.length === 0 ? <EmptyState title="No email operations recorded" detail="No password-reset or activation-email operation is currently available for this approved doctor." /> : null}
+    {items?.length ? <div className="table-scroll"><table><thead><tr><th>Operation</th><th>Status</th><th>Last activity</th><th>Attempts</th><th>Details</th><th>Recovery</th></tr></thead><tbody>{items.map((operation) => <tr key={operation.id}><td>{operationName(operation.operationType)}</td><td><StatusBadge value={operation.status} /><small>{operationStatusMeaning(operation.status)}</small></td><td>{date(operation.lastOutcomeAt ?? operation.lastAttemptAt ?? operation.nextAttemptAt)}</td><td>{operation.attemptCount}</td><td>{operation.lastErrorCode ? <small>Failure: {operation.lastErrorCode}</small> : operation.providerMessageId ? <small>Resend message ID: {operation.providerMessageId}</small> : <small>{operation.status === "ACCEPTED" ? "Provider accepted the request; delivery is not confirmed." : "No failure details recorded."}</small>}</td><td>{operation.retryEligible ? <Button type="button" variant="secondary" disabled={retrying !== null} onClick={() => onRetry(operation)}>{retrying === `${doctor.id}:${operation.id}` ? "Queueing…" : "Retry this operation"}</Button> : <small>{operation.status === "FAILED" ? "Retry limit reached or recovery is not eligible." : "No manual retry needed."}</small>}</td></tr>)}</tbody></table></div> : null}
+  </section>;
+}
+
+function operationName(value: ClinicCreatedDoctorEmailOperation["operationType"]) { return value === "FIREBASE_PASSWORD_RESET" ? "Firebase password reset" : "Doctor Portal activation email"; }
+function operationStatusMeaning(value: ClinicCreatedDoctorEmailOperation["status"]) { return value === "PENDING" ? "Waiting to be processed." : value === "PROCESSING" ? "Currently being processed." : value === "RETRY_SCHEDULED" ? "Another attempt is scheduled." : value === "ACCEPTED" ? "Accepted by the provider; delivery is not confirmed." : "Processing failed and requires appropriate recovery."; }
 
 function EmailTesting() {
   const [emailType, setEmailType] = useState<"DOCTOR_ACTIVATION" | "DOCTOR_WELCOME">("DOCTOR_ACTIVATION");
