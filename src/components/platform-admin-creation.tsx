@@ -3,7 +3,7 @@
 import { sendPasswordResetEmail } from "firebase/auth";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { firebaseAuth } from "../lib/firebase";
-import { createPlatformAdmin, recordPlatformAdminActivationEmail, requestPlatformAdminActivationEmail } from "../lib/platform-api/platform-admin";
+import { createPlatformAdmin, recordPlatformAdminActivationEmail, requestExistingPlatformAdminActivationEmail, requestPlatformAdminActivationEmail } from "../lib/platform-api/platform-admin";
 import { Alert, Breadcrumbs, Button, Card, Input, PageHeader, StepIndicator } from "./ui";
 
 export function PlatformAdminCreationPage() {
@@ -13,6 +13,7 @@ export function PlatformAdminCreationPage() {
   const [createdAccountId, setCreatedAccountId] = useState<string | null>(null);
   const [coolingDown, setCoolingDown] = useState(false);
   const [deliveryFailed, setDeliveryFailed] = useState(false);
+  const [existingEmailRequested, setExistingEmailRequested] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const cooldownTimeout = useRef<number | null>(null);
 
@@ -44,6 +45,7 @@ export function PlatformAdminCreationPage() {
     setCreatedEmail(null);
     setCreatedAccountId(null);
     setDeliveryFailed(false);
+    setExistingEmailRequested(null);
     try {
       const created = await createPlatformAdmin(requestedEmail);
       setCreatedEmail(requestedEmail);
@@ -76,5 +78,25 @@ export function PlatformAdminCreationPage() {
     finally { setBusy(false); }
   }
 
-  return <div><Breadcrumbs items={["Platform Admin", "Platform Admins", "Create"]} /><PageHeader eyebrow="Platform" title="Create Platform Admin" description="Create a Platform Admin account, then request its existing Firebase password-setup email." /><StepIndicator steps={["Email address", "Password setup"]} current={createdEmail ? 1 : 0} /><Card className="platform-form"><form className="login-form" onSubmit={(event) => void submit(event)}><label>Email address<Input type="email" autoComplete="email" disabled={busy} onChange={(event) => setEmail(event.target.value)} required value={email} /></label><p className="control-help">The account is created with the existing Platform Admin entitlement. Password setup continues through Firebase&apos;s password-reset email.</p><Button disabled={busy} type="submit">{busy ? "Creating…" : "Create Platform Admin"}</Button></form>{createdEmail && !deliveryFailed ? <Alert tone="info">The Platform Admin account for {createdEmail} was created and a password-setup email was requested.</Alert> : null}{createdEmail && deliveryFailed ? <Alert tone="error">The Platform Admin account for {createdEmail} was created, but Firebase could not send its password-setup email.</Alert> : null}{createdAccountId ? <><Button disabled={busy || coolingDown} onClick={() => void resend()} type="button">{coolingDown ? "Resend available shortly" : "Resend password-setup email"}</Button><p className="control-help">This requests Firebase to send an email; it does not confirm inbox delivery.</p></> : null}{error ? <Alert tone="error">{error}</Alert> : null}</Card></div>;
+  async function resendExisting() {
+    const requestedEmail = email.trim();
+    if (!requestedEmail || coolingDown) return;
+    setBusy(true); setDeliveryFailed(false); setError(null); setExistingEmailRequested(null);
+    try {
+      const target = await requestExistingPlatformAdminActivationEmail(requestedEmail);
+      beginCooldown();
+      try {
+        await sendPasswordResetEmail(firebaseAuth(), requestedEmail);
+        await recordPlatformAdminActivationEmail(target.accountId, "REQUESTED");
+        setExistingEmailRequested(requestedEmail);
+      } catch {
+        setDeliveryFailed(true);
+        setError("The password-setup email request was accepted, but Firebase could not send the email.");
+        try { await recordPlatformAdminActivationEmail(target.accountId, "FAILED"); } catch { /* The accepted request is already audited server-side. */ }
+      }
+    } catch { setError("The password-setup email could not be requested. Check the email address and try again."); }
+    finally { setBusy(false); }
+  }
+
+  return <div><Breadcrumbs items={["Platform Admin", "Platform Admins", "Create"]} /><PageHeader eyebrow="Platform" title="Create Platform Admin" description="Create a Platform Admin account, then request its existing Firebase password-setup email." /><StepIndicator steps={["Email address", "Password setup"]} current={createdEmail ? 1 : 0} /><Card className="platform-form"><form className="login-form" onSubmit={(event) => void submit(event)}><label>Email address<Input type="email" autoComplete="email" disabled={busy} onChange={(event) => setEmail(event.target.value)} required value={email} /></label><p className="control-help">The account is created with the existing Platform Admin entitlement. Password setup continues through Firebase&apos;s password-reset email.</p><Button disabled={busy} type="submit">{busy ? "Creating…" : "Create Platform Admin"}</Button></form>{createdEmail && !deliveryFailed ? <Alert tone="info">The Platform Admin account for {createdEmail} was created and a password-setup email was requested.</Alert> : null}{createdEmail && deliveryFailed ? <Alert tone="error">The Platform Admin account for {createdEmail} was created, but Firebase could not send its password-setup email.</Alert> : null}{createdAccountId ? <><Button disabled={busy || coolingDown} onClick={() => void resend()} type="button">{coolingDown ? "Resend available shortly" : "Resend password-setup email"}</Button><p className="control-help">This requests Firebase to send an email; it does not confirm inbox delivery.</p></> : <><p className="control-help">For an existing active Platform Admin, use the same email address to request another password-setup email.</p><Button disabled={busy || coolingDown || !email.trim()} onClick={() => void resendExisting()} type="button">{coolingDown ? "Resend available shortly" : "Resend password-setup email"}</Button></>}{existingEmailRequested ? <Alert tone="info">A password-setup email was requested for {existingEmailRequested}.</Alert> : null}{error ? <Alert tone="error">{error}</Alert> : null}</Card></div>;
 }

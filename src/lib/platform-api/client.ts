@@ -13,8 +13,8 @@ export async function platformRequest<T>(path: string, init: RequestInit = {}): 
     const error = body?.error;
     throw new PlatformApiError(response.status, typeof error?.code === "string" ? error.code : undefined, typeof error?.requestId === "string" ? error.requestId : undefined, typeof error?.message === "string" ? error.message : undefined);
   }
-  if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
+  const body = await response.text();
+  return body.trim() ? JSON.parse(body) as T : undefined as T;
 }
 
 export function platformPost<T>(path: string, body?: unknown): Promise<T> {

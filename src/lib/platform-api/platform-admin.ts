@@ -38,6 +38,7 @@ export type CommercialOfferingPreview = { offeringId: string; offeringName: stri
 
 export function platformDashboard() { return platformRequest<PlatformMetrics>("/v1/platform/dashboard"); }
 export function createPlatformAdmin(email: string) { return platformPost<CreatedPlatformAdmin>("/v1/platform/admins", { email }); }
+export function requestExistingPlatformAdminActivationEmail(email: string) { return platformPost<{ accountId: string }>("/v1/platform/admins/activation-email", { email }); }
 export function requestPlatformAdminActivationEmail(id: string) { return platformPost<void>(`/v1/platform/admins/${encodeURIComponent(id)}/activation-email`); }
 export function recordPlatformAdminActivationEmail(id: string, outcome: "REQUESTED" | "FAILED") { return platformPost<void>(`/v1/platform/admins/${encodeURIComponent(id)}/activation-email/outcome`, { outcome }); }
 export function listPlatformClinics() { return platformRequest<{ items: PlatformClinic[] }>("/v1/platform/clinics"); }
