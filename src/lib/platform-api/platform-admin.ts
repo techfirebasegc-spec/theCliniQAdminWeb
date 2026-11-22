@@ -1,4 +1,4 @@
-import { platformDelete, platformDownload, platformPatch, platformPost, platformRequest } from "./client";
+import { platformDelete, platformDownload, platformPatch, platformPost, platformPut, platformRequest } from "./client";
 
 export type HelpArticle = { id: string; slug: string; title: string; category: string; summary: string; prerequisites: string; steps: string[]; troubleshooting: string[]; links: Array<{ label: string; href: string }>; implementationStatus: "Implemented" | "Partial" | "Planned"; sourceReferences: string[]; status: "DRAFT" | "PUBLISHED" | "ARCHIVED"; published: unknown | null; lastReviewedAt: string | null };
 export type HelpArticleInput = Omit<HelpArticle, "id" | "status" | "published" | "lastReviewedAt" | "createdAt" | "updatedAt"> & { lastReviewedAt?: string | null };
@@ -33,8 +33,139 @@ export function listProfessionalClassifications() { return platformRequest<{ ite
 export function listDoctorProfessionalClassifications(doctorId: string) { return platformRequest<{ items: ProfessionalClassificationAssignment[] }>(`/v1/platform/doctors/${encodeURIComponent(doctorId)}/professional-classifications`); }
 export function assignProfessionalClassification(doctorId: string, classificationCode: string, reason: string) { return platformPost<{ assignment: ProfessionalClassificationAssignment }>(`/v1/platform/doctors/${encodeURIComponent(doctorId)}/professional-classifications`, { classificationCode, reason }); }
 export function revokeProfessionalClassification(doctorId: string, classificationCode: string, reason: string) { return platformPost<{ assignment: ProfessionalClassificationAssignment }>(`/v1/platform/doctors/${encodeURIComponent(doctorId)}/professional-classifications/${encodeURIComponent(classificationCode)}/revoke`, { reason }); }
-export type CommercialRuleVersion = { id: string; commercialRuleId: string; versionNumber: number; status: "DRAFT" | "SUBMITTED" | "APPROVED" | "RETIRED"; ruleType: string; priority: number; effectiveFrom: string; effectiveUntil?: string; calculationBasis: string; processingFeeBearer: string; policy: { percentageBasisPoints?: string; fixedAmountMinor?: string }; scopes: Array<{ kind: string; value?: string }> };
-export type CommercialOfferingPreview = { offeringId: string; offeringName: string; result: "COVERED" | "UNCOVERED" | "AMBIGUOUS" | "INVALID"; selectedVersionId?: string };
+export type TransactionChannel =
+  | "ONLINE_OPD"
+  | "OFFLINE_OPD"
+  | "ONLINE_IPD"
+  | "OFFLINE_IPD"
+  | "OPD_SUBSCRIPTION"
+  | "IPD_SUBSCRIPTION"
+  | "DOCTOR_SUBSCRIPTION"
+  | "OTHER_FINANCIAL_SERVICE"
+  | "ALL";
+
+export type CommercialRuleVersion = {
+  id: string;
+  commercialRuleId: string;
+  name?: string;
+  description?: string;
+  versionNumber: number;
+  status: "DRAFT" | "SUBMITTED" | "APPROVED" | "RETIRED";
+  ruleType: string;
+  channel?: TransactionChannel;
+  beneficiaryType?: "PLATFORM" | "CLINIC" | "INDEPENDENT_DOCTOR" | "PARTNER";
+  priority: number;
+  effectiveFrom: string;
+  effectiveUntil?: string;
+  changeReason?: string | null;
+  calculationBasis: string;
+  processingFeeBearer: string;
+  policy: {
+    percentageBasisPoints?: string;
+    fixedAmountMinor?: string;
+    platformShareBasisPoints?: string;
+    clinicShareBasisPoints?: string;
+    doctorShareBasisPoints?: string;
+    partnerShareBasisPoints?: string;
+    gstRateBps?: number | string;
+    taxType?: string;
+    isInclusive?: boolean;
+    hsnSacCode?: string;
+    registrationNumber?: string;
+    feeBearer?: string;
+  };
+  scopes: Array<{ kind: string; value?: string }>;
+  submittedByAccountId?: string | null;
+  submittedAt?: string | null;
+  approvedByAccountId?: string | null;
+  approvedAt?: string | null;
+  supersedesVersionId?: string | null;
+  createdAt?: string;
+};
+
+export type CommercialOfferingPreview = {
+  offeringId: string;
+  offeringName: string;
+  result: "COVERED" | "UNCOVERED" | "AMBIGUOUS" | "INVALID";
+  selectedVersionId?: string;
+};
+
+export type CommercialPartner = {
+  id: string;
+  name: string;
+  partnerType: "REFERRAL" | "AFFILIATE" | "MARKETING" | "CORPORATE" | "HEALTHCARE_NETWORK";
+  contactEmail: string;
+  status: "DRAFT" | "ACTIVE" | "SUSPENDED" | "ARCHIVED";
+  settlementFrequency: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "MANUAL";
+  minimumPayoutThresholdMinor: string;
+  notes?: string | null;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PaymentGatewayConfig = {
+  id: string;
+  providerKey: string;
+  environment: "TEST" | "LIVE";
+  merchantAccountId: string;
+  isActive: boolean;
+  supportedPaymentModes: string[];
+  currency: string;
+  autoCapture: boolean;
+  webhookUrl: string | null;
+  webhookStatus: "HEALTHY" | "DEGRADED" | "UNCONFIGURED";
+  keyId: string;
+  keySecretMasked: string;
+  lastRotatedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type FinancialGovernanceOverview = {
+  totalActiveConfigurations: number;
+  approvedVersions: number;
+  pendingApprovals: number;
+  upcomingChanges: number;
+  expiredRules: number;
+  uncoveredOfferings: number;
+  ambiguousOfferings: number;
+  lastModifiedAt: string | null;
+  lastModifiedBy: string | null;
+  nextScheduledChangeAt: string | null;
+  channels: Record<string, { activeRulesCount: number; defaultRateBps?: number; defaultFixedMinor?: string }>;
+};
+
+export type CommercialSimulationResult = {
+  channel: string;
+  grossAmountMinor: string;
+  discountAmountMinor: string;
+  netPayableMinor: string;
+  platformCommissionMinor: string;
+  commissionRateBps: number;
+  commissionCalculationBasis: string;
+  providerPayableMinor: string;
+  partnerShareMinor: string;
+  taxAmountMinor: string;
+  taxRateBps: number;
+  taxType: string;
+  gatewayFeeAmountMinor: string;
+  gatewayGstAmountMinor: string;
+  gatewayFeeBearer: string;
+  estimatedNetSettlementMinor: string;
+  resolutionTrace: {
+    matchedRuleId: string;
+    matchedVersionId: string;
+    precedenceLevel: number;
+    precedenceDescription: string;
+  };
+};
+export type SubscriptionDefaultConfiguration = { id:string; productKey:"OFFLINE_OPD"|"IPD_MANAGEMENT"; subjectKind:"CLINIC"|"DOCTOR"; planId:string; planName:string; planVersionId:string; versionNumber:number; effectiveFrom:string; effectiveUntil:string|null; opdGraceDays:number; configuredByAccountId:string|null; createdAt:string };
+export type SubscriptionProductKey = "OFFLINE_OPD" | "IPD_MANAGEMENT";
+export type SubscriptionCatalogueProduct = { id:string; key:SubscriptionProductKey; displayName:string; status:string };
+export type SubscriptionPlan = { id:string; productId:string; code:string; displayName:string; status:"DRAFT"|"ACTIVE"|"RETIRED"; createdAt:string };
+export type SubscriptionPlanEntitlement = { key:string; enabled:boolean; value:Record<string,unknown> };
+export type SubscriptionPlanVersion = { id:string; planId:string; versionNumber:number; status:"DRAFT"|"PUBLISHED"|"RETIRED"; effectiveFrom:string; effectiveUntil:string|null; currency:string; priceMinor:string; billingCadence:"MONTHLY"|"ANNUAL"|"NONE"; freeTrialEnabled:boolean; entitlements:SubscriptionPlanEntitlement[]; createdAt:string };
 
 export function platformDashboard() { return platformRequest<PlatformMetrics>("/v1/platform/dashboard"); }
 export function createPlatformAdmin(email: string) { return platformPost<CreatedPlatformAdmin>("/v1/platform/admins", { email }); }
@@ -89,8 +220,36 @@ export function listPresentationEntitlements() { return platformRequest<{ items:
 export function createPresentationEntitlement(value: { subject: PresentationEntitlement["subject"]; capabilityKey: string; effect: "GRANT" | "DENY"; externalReference?: string }) { return platformPost<{ entitlement: PresentationEntitlement }>("/v1/platform/presentation/entitlements", value); }
 export function revokePresentationEntitlement(id: string) { return platformDelete<void>(`/v1/platform/presentation/entitlements/${encodeURIComponent(id)}`); }
 export function listCommercialRules() { return platformRequest<{ items: CommercialRuleVersion[] }>("/v1/platform/commercial-rules"); }
+export function getCommercialRulesOverview() { return platformRequest<FinancialGovernanceOverview>("/v1/platform/commercial-rules/overview"); }
 export function previewCommercialRules() { return platformRequest<{ items: CommercialOfferingPreview[] }>("/v1/platform/commercial-rules/preview"); }
-export function createCommercialRule(value: { ruleType: string; priority: number; effectiveFrom: string; calculationBasis: string; processingFeeBearer: string; policy: Record<string, unknown>; scopes: Array<{ kind: string; value?: string }> }) { return platformPost<{ version: CommercialRuleVersion }>("/v1/platform/commercial-rules", value); }
+export function simulateCommercialRules(value: { channel: string; grossAmountMinor: string; discountAmountMinor?: string; serviceOfferingId?: string; clinicId?: string; doctorProfileId?: string; partnerId?: string; at?: string }) { return platformPost<CommercialSimulationResult>("/v1/platform/commercial-rules/simulate", value); }
+export function createCommercialRule(value: { name?: string; description?: string; ruleType: string; channel?: string; beneficiaryType?: string; priority: number; effectiveFrom: string; calculationBasis: string; processingFeeBearer: string; changeReason?: string; policy: Record<string, unknown>; scopes: Array<{ kind: string; value?: string }> }) { return platformPost<{ version: CommercialRuleVersion }>("/v1/platform/commercial-rules", value); }
+export function updateCommercialRuleDraft(id: string, value: { name?: string; description?: string; ruleType: string; channel?: string; beneficiaryType?: string; priority: number; effectiveFrom: string; calculationBasis: string; processingFeeBearer: string; changeReason?: string; policy: Record<string, unknown>; scopes: Array<{ kind: string; value?: string }> }) { return platformRequest<{ version: CommercialRuleVersion }>(`/v1/platform/commercial-rules/versions/${encodeURIComponent(id)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(value) }); }
 export function submitCommercialRule(id: string) { return platformPost<{ version: CommercialRuleVersion }>(`/v1/platform/commercial-rules/versions/${encodeURIComponent(id)}/submit`, {}); }
 export function approveCommercialRule(id: string) { return platformPost<{ version: CommercialRuleVersion }>(`/v1/platform/commercial-rules/versions/${encodeURIComponent(id)}/approve`, {}); }
+export function supersedeCommercialRule(id: string, value: { name?: string; description?: string; ruleType: string; channel?: string; beneficiaryType?: string; priority: number; effectiveFrom: string; calculationBasis: string; processingFeeBearer: string; changeReason?: string; policy: Record<string, unknown>; scopes: Array<{ kind: string; value?: string }> }) { return platformPost<{ version: CommercialRuleVersion }>(`/v1/platform/commercial-rules/versions/${encodeURIComponent(id)}/supersede`, value); }
 export function retireCommercialRule(id: string, effectiveUntil: string) { return platformPost<void>(`/v1/platform/commercial-rules/versions/${encodeURIComponent(id)}/retire`, { effectiveUntil }); }
+export function listCommercialPartners() { return platformRequest<{ items: CommercialPartner[] }>("/v1/platform/commercial-rules/partners"); }
+export function createCommercialPartner(value: { name: string; partnerType: string; contactEmail: string; settlementFrequency?: string; minimumPayoutThresholdMinor?: string; notes?: string }) { return platformPost<{ partner: CommercialPartner }>("/v1/platform/commercial-rules/partners", value); }
+export function updateCommercialPartner(id: string, value: Partial<CommercialPartner>) { return platformRequest<{ partner: CommercialPartner }>(`/v1/platform/commercial-rules/partners/${encodeURIComponent(id)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(value) }); }
+export function listPaymentGateways() { return platformRequest<{ items: PaymentGatewayConfig[] }>("/v1/platform/commercial-rules/gateways"); }
+export function updatePaymentGateway(environment: "TEST" | "LIVE", value: Partial<PaymentGatewayConfig>) { return platformRequest<{ gateway: PaymentGatewayConfig }>(`/v1/platform/commercial-rules/gateways/${encodeURIComponent(environment)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(value) }); }
+export function listSubscriptionDefaultConfigurations(productKey?: SubscriptionDefaultConfiguration["productKey"]) { return platformRequest<{items:SubscriptionDefaultConfiguration[]}>(`/v1/platform/subscriptions/default-configurations${productKey?`?productKey=${productKey}`:""}`); }
+export function scheduleSubscriptionDefaultConfiguration(value:{productKey:SubscriptionDefaultConfiguration["productKey"];subjectKind:SubscriptionDefaultConfiguration["subjectKind"];planVersionId:string;effectiveFrom:string;opdGraceDays:number}) { return platformPost<{configuration:SubscriptionDefaultConfiguration}>("/v1/platform/subscriptions/default-configurations",value); }
+export function listSubscriptionProducts() { return platformRequest<{items:SubscriptionCatalogueProduct[]}>("/v1/platform/subscriptions/products"); }
+export function listSubscriptionPlans(productKey:SubscriptionProductKey,limit=100,offset=0) { return platformRequest<{items:SubscriptionPlan[];total:number;limit:number;offset:number}>(`/v1/platform/subscriptions/products/${encodeURIComponent(productKey)}/plans?limit=${limit}&offset=${offset}`); }
+export function createSubscriptionPlan(productKey:SubscriptionProductKey,value:{code:string;displayName:string}) { return platformPost<{plan:SubscriptionPlan}>(`/v1/platform/subscriptions/products/${encodeURIComponent(productKey)}/plans`,value); }
+export function updateSubscriptionPlan(planId:string,value:{displayName:string}) { return platformPatch<{plan:SubscriptionPlan}>(`/v1/platform/subscriptions/plans/${encodeURIComponent(planId)}`,value); }
+export function activateSubscriptionPlan(planId:string) { return platformPost<{plan:SubscriptionPlan}>(`/v1/platform/subscriptions/plans/${encodeURIComponent(planId)}/activate`,{}); }
+export function retireSubscriptionPlan(planId:string) { return platformPost<{plan:SubscriptionPlan}>(`/v1/platform/subscriptions/plans/${encodeURIComponent(planId)}/archive`,{}); }
+export function listSubscriptionPlanVersions(planId:string) { return platformRequest<{items:SubscriptionPlanVersion[]}>(`/v1/platform/subscriptions/plans/${encodeURIComponent(planId)}/versions`); }
+export function createSubscriptionPlanVersion(planId:string,value:{effectiveFrom:string;effectiveUntil?:string;currency:string;priceMinor:string;billingCadence:"MONTHLY"|"ANNUAL"|"NONE";entitlements:SubscriptionPlanEntitlement[]}) { return platformPost<{version:SubscriptionPlanVersion}>(`/v1/platform/subscriptions/plans/${encodeURIComponent(planId)}/versions`,value); }
+export function publishSubscriptionPlanVersion(versionId:string) { return platformPost<{version:SubscriptionPlanVersion}>(`/v1/platform/subscriptions/versions/${encodeURIComponent(versionId)}/publish`,{}); }
+export function retireSubscriptionPlanVersion(versionId:string) { return platformPost<{version:SubscriptionPlanVersion}>(`/v1/platform/subscriptions/versions/${encodeURIComponent(versionId)}/archive`,{}); }
+export type SubscriptionSubjectEligibility = { id: string; status: "ELIGIBLE" | "INELIGIBLE"; effectiveFrom: string; effectiveUntil: string | null; reason: string | null };
+export type SetSubscriptionEligibilityInput = { status: "ELIGIBLE" | "INELIGIBLE"; effectiveFrom: string; effectiveUntil?: string; reason?: string };
+export function getSubscriptionSubjectEligibility(productKey: SubscriptionProductKey, subjectKind: "CLINIC" | "DOCTOR", subjectId: string) { return platformRequest<{ items: SubscriptionSubjectEligibility[] }>(`/v1/platform/subscriptions/products/${encodeURIComponent(productKey)}/eligibility/${encodeURIComponent(subjectKind)}/${encodeURIComponent(subjectId)}`); }
+export function setSubscriptionSubjectEligibility(productKey: SubscriptionProductKey, subjectKind: "CLINIC" | "DOCTOR", subjectId: string, value: SetSubscriptionEligibilityInput) { return platformRequest<{ eligibility: { id: string } }>(`/v1/platform/subscriptions/products/${encodeURIComponent(productKey)}/eligibility/${encodeURIComponent(subjectKind)}/${encodeURIComponent(subjectId)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(value) }); }
+export const listSubscriptionEligibility = getSubscriptionSubjectEligibility;
+export const setSubscriptionEligibility = setSubscriptionSubjectEligibility;
+

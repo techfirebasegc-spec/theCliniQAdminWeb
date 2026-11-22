@@ -25,6 +25,10 @@ export function platformPatch<T>(path: string, body: unknown): Promise<T> {
   return platformRequest<T>(path, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 }
 
+export function platformPut<T>(path: string, body: unknown): Promise<T> {
+  return platformRequest<T>(path, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+}
+
 export function platformDelete<T>(path: string): Promise<T> { return platformRequest<T>(path, { method: "DELETE" }); }
 
 export async function platformDownload(path: string): Promise<Blob> {
