@@ -8,23 +8,111 @@ import { useAuth } from "../providers/auth-provider";
 import { Button, Drawer } from "./ui";
 import "./admin-shell.module.css";
 
-type NavigationGroup = "Overview" | "Platform Administration" | "Organizations" | "Doctors & Verification" | "Financial Operations" | "Platform Configuration";
-type IconName = "dashboard" | "admins" | "catalogue" | "prescription" | "help" | "clinic" | "owners" | "application" | "invitation" | "doctor" | "classification" | "finance" | "payout" | "reconcile" | "rules" | "presentation" | "settings";
+type NavigationGroup = "Overview" | "Organisation Management" | "Business Development" | "Financial Operations" | "Platform Administration";
+type IconName = "dashboard" | "admins" | "catalogue" | "prescription" | "help" | "clinic" | "owners" | "application" | "invitation" | "doctor" | "classification" | "finance" | "payout" | "reconcile" | "rules" | "presentation" | "settings" | "query" | "partner";
 type Navigation = { label: string; group: NavigationGroup; href: string; icon: IconName };
 
 const navigation: Navigation[] = [
-  { label: "Dashboard", group: "Overview", href: "/platform", icon: "dashboard" }, { label: "Help Center", group: "Overview", href: "/platform/help", icon: "help" },
-  { label: "Platform Admins", group: "Platform Administration", href: "/platform/admins/new", icon: "admins" }, { label: "Clinical Catalogue", group: "Platform Administration", href: "/platform/clinical-catalogue", icon: "catalogue" }, { label: "Clinical Instructions", group: "Platform Administration", href: "/platform/clinical-instructions", icon: "catalogue" }, { label: "Prescription access", group: "Platform Administration", href: "/platform/prescription-workflow", icon: "prescription" },
-  { label: "Clinics", group: "Organizations", href: "/platform/clinics", icon: "clinic" }, { label: "Clinic Owners", group: "Organizations", href: "/platform/owners", icon: "owners" }, { label: "Clinic Applications", group: "Organizations", href: "/platform/clinic-applications", icon: "application" }, { label: "Invitations", group: "Organizations", href: "/platform/invitations", icon: "invitation" },
-  { label: "Doctors / Verification", group: "Doctors & Verification", href: "/platform/doctors", icon: "doctor" }, { label: "Professional classifications", group: "Doctors & Verification", href: "/platform/professional-classifications", icon: "classification" }, { label: "Clinic-created Doctors", group: "Doctors & Verification", href: "/platform/clinic-created-doctors", icon: "owners" }, { label: "Doctor Applications", group: "Doctors & Verification", href: "/platform/doctor-applications", icon: "application" }, { label: "Doctor Invitations", group: "Doctors & Verification", href: "/platform/doctors/invitations", icon: "invitation" },
-  { label: "Financial Overview", group: "Financial Operations", href: "/platform/financial/overview", icon: "finance" }, { label: "Transactions", group: "Financial Operations", href: "/platform/financial/transactions", icon: "finance" }, { label: "Settlement Statements", group: "Financial Operations", href: "/platform/financial/settlements", icon: "payout" }, { label: "Subscription Finance", group: "Financial Operations", href: "/platform/financial/subscriptions", icon: "settings" }, { label: "Manual Payouts", group: "Financial Operations", href: "/platform/financial/manual-payouts", icon: "payout" }, { label: "Eligibility", group: "Financial Operations", href: "/platform/financial/eligibility", icon: "finance" }, { label: "Reconciliation", group: "Financial Operations", href: "/platform/financial/reconciliation", icon: "reconcile" }, { label: "Commercial Rules", group: "Financial Operations", href: "/platform/commercial-rules", icon: "rules" },
-  { label: "Subscriptions", group: "Platform Configuration", href: "/platform/subscriptions", icon: "settings" }, { label: "Settings", group: "Platform Configuration", href: "/platform/settings", icon: "settings" },
+  // Overview
+  { label: "Dashboard", group: "Overview", href: "/platform", icon: "dashboard" },
+  { label: "Help Center", group: "Overview", href: "/platform/help", icon: "help" },
+
+  // Business Development (Core Inbound & Partner Management)
+  { label: "Query Centre", group: "Business Development", href: "/platform/queries", icon: "query" },
+  { label: "Partner Management", group: "Business Development", href: "/platform/partners", icon: "partner" },
+
+  // Organisation Management
+  { label: "Clinics", group: "Organisation Management", href: "/platform/clinics", icon: "clinic" },
+  { label: "Clinic Owners", group: "Organisation Management", href: "/platform/owners", icon: "owners" },
+  { label: "Clinic Applications", group: "Organisation Management", href: "/platform/clinic-applications", icon: "application" },
+  { label: "Invitations", group: "Organisation Management", href: "/platform/invitations", icon: "invitation" },
+  { label: "Doctors / Verification", group: "Organisation Management", href: "/platform/doctors", icon: "doctor" },
+  { label: "Professional classifications", group: "Organisation Management", href: "/platform/professional-classifications", icon: "classification" },
+  { label: "Clinic-created Doctors", group: "Organisation Management", href: "/platform/clinic-created-doctors", icon: "owners" },
+  { label: "Doctor Applications", group: "Organisation Management", href: "/platform/doctor-applications", icon: "application" },
+  { label: "Doctor Invitations", group: "Organisation Management", href: "/platform/doctors/invitations", icon: "invitation" },
+
+  // Financial Operations
+  { label: "Financial Overview", group: "Financial Operations", href: "/platform/financial/overview", icon: "finance" },
+  { label: "Transactions", group: "Financial Operations", href: "/platform/financial/transactions", icon: "finance" },
+  { label: "Settlement Statements", group: "Financial Operations", href: "/platform/financial/settlements", icon: "payout" },
+  { label: "Subscription Finance", group: "Financial Operations", href: "/platform/financial/subscriptions", icon: "settings" },
+  { label: "Manual Payouts", group: "Financial Operations", href: "/platform/financial/manual-payouts", icon: "payout" },
+  { label: "Eligibility", group: "Financial Operations", href: "/platform/financial/eligibility", icon: "finance" },
+  { label: "Reconciliation", group: "Financial Operations", href: "/platform/financial/reconciliation", icon: "reconcile" },
+  { label: "Commercial Rules", group: "Financial Operations", href: "/platform/commercial-rules", icon: "rules" },
+
+  // Platform Administration
+  { label: "Platform Admins", group: "Platform Administration", href: "/platform/admins/new", icon: "admins" },
+  { label: "Clinical Catalogue", group: "Platform Administration", href: "/platform/clinical-catalogue", icon: "catalogue" },
+  { label: "Clinical Instructions", group: "Platform Administration", href: "/platform/clinical-instructions", icon: "catalogue" },
+  { label: "Prescription access", group: "Platform Administration", href: "/platform/prescription-workflow", icon: "prescription" },
+  { label: "Subscriptions", group: "Platform Administration", href: "/platform/subscriptions", icon: "settings" },
+  { label: "Settings", group: "Platform Administration", href: "/platform/settings", icon: "settings" },
 ];
 
-const groups: NavigationGroup[] = ["Overview", "Platform Administration", "Organizations", "Doctors & Verification", "Financial Operations", "Platform Configuration"];
-const primaryGroups: NavigationGroup[] = ["Overview", "Organizations", "Doctors & Verification", "Financial Operations"];
-const primaryNavigation = primaryGroups.map((group) => navigation.find((item) => item.group === group)!);
-const secondaryNavigation = groups.map((group) => ({ group, items: navigation.filter((item) => item.group === group && !primaryNavigation.includes(item)) })).filter(({ items }) => items.length);
+const groups: NavigationGroup[] = [
+  "Overview",
+  "Organisation Management",
+  "Business Development",
+  "Financial Operations",
+  "Platform Administration",
+];
+
+const primaryShortcuts: Navigation[] = [
+  { label: "Dashboard", group: "Overview", href: "/platform", icon: "dashboard" },
+  { label: "Query Centre", group: "Business Development", href: "/platform/queries", icon: "query" },
+  { label: "Partner Management", group: "Business Development", href: "/platform/partners", icon: "partner" },
+  { label: "Clinics", group: "Organisation Management", href: "/platform/clinics", icon: "clinic" },
+  { label: "Doctors / Verification", group: "Organisation Management", href: "/platform/doctors", icon: "doctor" },
+  { label: "Financial Overview", group: "Financial Operations", href: "/platform/financial/overview", icon: "finance" },
+];
+
+const primaryNavigation = [
+  { label: "Dashboard", group: "Overview" as NavigationGroup, href: "/platform", icon: "dashboard" as IconName },
+  { label: "Organizations", group: "Organisation Management" as NavigationGroup, href: "/platform/clinics", icon: "clinic" as IconName },
+  { label: "Business Dev", group: "Business Development" as NavigationGroup, href: "/platform/queries", icon: "query" as IconName },
+  { label: "Financial Operations", group: "Financial Operations" as NavigationGroup, href: "/platform/financial/overview", icon: "finance" as IconName },
+  { label: "Administration", group: "Platform Administration" as NavigationGroup, href: "/platform/admins/new", icon: "admins" as IconName },
+];
+
+const secondaryNavigationColumns = [
+  {
+    key: "col-growth-admin",
+    groups: [
+      {
+        group: "Business Development" as NavigationGroup,
+        items: navigation.filter((item) => item.group === "Business Development"),
+      },
+      {
+        group: "Overview" as NavigationGroup,
+        items: navigation.filter((item) => item.group === "Overview"),
+      },
+      {
+        group: "Platform Administration" as NavigationGroup,
+        items: navigation.filter((item) => item.group === "Platform Administration"),
+      },
+    ],
+  },
+  {
+    key: "col-org",
+    groups: [
+      {
+        group: "Organisation Management" as NavigationGroup,
+        items: navigation.filter((item) => item.group === "Organisation Management"),
+      },
+    ],
+  },
+  {
+    key: "col-finance",
+    groups: [
+      {
+        group: "Financial Operations" as NavigationGroup,
+        items: navigation.filter((item) => item.group === "Financial Operations"),
+      },
+    ],
+  },
+];
 
 function isActive(pathname: string, href: string) { return pathname === href || (href !== "/platform" && pathname.startsWith(`${href}/`)); }
 
@@ -39,6 +127,8 @@ function NavIcon({ name }: { name: IconName }) {
     finance: <><path d="M4 20V8l8-5 8 5v12" /><path d="M8 12h8M8 16h8M6 20h12" /></>, payout: <><circle cx="12" cy="12" r="9" /><path d="M15 8.5c-.7-.6-1.6-.9-3-.9-1.7 0-3 .8-3 2.1 0 3.3 6 1.5 6 4.7 0 1.3-1.3 2.1-3 2.1-1.4 0-2.6-.4-3.4-1.1M12 6v12" /></>,
     reconcile: <><path d="M7 7h11v11" /><path d="m18 7-3-3M18 7l-3 3M17 17H6V6" /><path d="m6 17 3 3M6 17l3-3" /></>, rules: <><path d="M5 4h14M5 10h14M5 16h14M5 20h10" /><circle cx="8" cy="4" r="1.5" /><circle cx="15" cy="10" r="1.5" /><circle cx="10" cy="16" r="1.5" /></>,
     presentation: <><rect x="3" y="4" width="18" height="12" rx="2" /><path d="m8 21 4-5 4 5M9 9h6" /></>, settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.12 2.12-.06-.06A1.7 1.7 0 0 0 15.74 18a1.7 1.7 0 0 0-1.04 1.56v.09h-3v-.09A1.7 1.7 0 0 0 10.66 18a1.7 1.7 0 0 0-1.88 1l-.06.06-2.12-2.12.06-.06A1.7 1.7 0 0 0 7 15a1.7 1.7 0 0 0-1.56-1.04h-.09v-3h.09A1.7 1.7 0 0 0 7 9.92a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.12-2.12.06.06a1.7 1.7 0 0 0 1.88.34A1.7 1.7 0 0 0 11.7 4.7v-.09h3v.09a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.12 2.12-.06.06A1.7 1.7 0 0 0 19.4 9.92 1.7 1.7 0 0 0 20.96 11h.09v3h-.09A1.7 1.7 0 0 0 19.4 15Z" /></>,
+    query: <><circle cx="11" cy="11" r="7" /><path d="m21 21-4.35-4.35M11 8v6M8 11h6" /></>,
+    partner: <><circle cx="9" cy="7" r="4" /><path d="M17 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2" /></>,
   };
   return <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{icons[name]}</svg>;
 }
@@ -60,7 +150,47 @@ function MoreNavigation({ inDrawer = false, onNavigate }: { inDrawer?: boolean; 
   const closeForNavigation = () => { setOpen(false); onNavigate?.(); };
   return <details ref={containerRef} className={inDrawer ? "more-navigation more-navigation--drawer" : "more-navigation"} open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
     <summary ref={summaryRef} aria-controls={menuId} aria-expanded={open}>{inDrawer ? "More navigation" : "More"}<span className="more-chevron" aria-hidden="true" /></summary>
-    <div className="more-menu" id={menuId}>{secondaryNavigation.map(({ group, items }) => <section key={group}><p>{group}</p>{items.map((item) => <Link key={item.href} href={item.href} onClick={closeForNavigation} aria-current={isActive(pathname, item.href) ? "page" : undefined} className={isActive(pathname, item.href) ? "more-menu-item more-menu-item--active" : "more-menu-item"}><NavIcon name={item.icon} /><span>{item.label}</span></Link>)}</section>)}</div>
+    <div className="more-menu" id={menuId}>
+      {inDrawer
+        ? secondaryNavigationColumns.flatMap((col) => col.groups).map(({ group, items }) => (
+            <section key={group} className="more-menu-group">
+              <p>{group}</p>
+              {items.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={closeForNavigation}
+                  aria-current={isActive(pathname, item.href) ? "page" : undefined}
+                  className={isActive(pathname, item.href) ? "more-menu-item more-menu-item--active" : "more-menu-item"}
+                >
+                  <NavIcon name={item.icon} />
+                  <span>{item.label}</span>
+                </Link>
+              ))}
+            </section>
+          ))
+        : secondaryNavigationColumns.map((col) => (
+            <div key={col.key} className="more-menu-column">
+              {col.groups.map(({ group, items }) => (
+                <section key={group} className="more-menu-group">
+                  <p>{group}</p>
+                  {items.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={closeForNavigation}
+                      aria-current={isActive(pathname, item.href) ? "page" : undefined}
+                      className={isActive(pathname, item.href) ? "more-menu-item more-menu-item--active" : "more-menu-item"}
+                    >
+                      <NavIcon name={item.icon} />
+                      <span>{item.label}</span>
+                    </Link>
+                  ))}
+                </section>
+              ))}
+            </div>
+          ))}
+    </div>
   </details>;
 }
 
@@ -120,12 +250,12 @@ function ProfileMenu({ email, onLogout }: { email: string; onLogout: () => Promi
 
 function SidebarNavigation({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
   const pathname = usePathname();
-  return <nav className={collapsed ? "sidebar-nav sidebar-nav--collapsed" : "sidebar-nav"} aria-label="Primary shortcuts">{!collapsed && <p className="sidebar-section-label">Shortcuts</p>}{primaryNavigation.map((item) => <Link key={item.href} href={item.href} onClick={onNavigate} aria-label={item.label} aria-current={isActive(pathname, item.href) ? "page" : undefined} data-tooltip={item.label} title={item.label} className={isActive(pathname, item.href) ? "nav-item nav-item--active" : "nav-item"}><NavIcon name={item.icon} /><span>{item.label}</span></Link>)}</nav>;
+  return <nav className={collapsed ? "sidebar-nav sidebar-nav--collapsed" : "sidebar-nav"} aria-label="Primary shortcuts">{!collapsed && <p className="sidebar-section-label">Shortcuts</p>}{primaryShortcuts.map((item) => <Link key={item.href} href={item.href} onClick={onNavigate} aria-label={item.label} aria-current={isActive(pathname, item.href) ? "page" : undefined} data-tooltip={item.label} title={item.label} className={isActive(pathname, item.href) ? "nav-item nav-item--active" : "nav-item"}><NavIcon name={item.icon} /><span>{item.label}</span></Link>)}</nav>;
 }
 
 function Brand({ collapsed = false, onNavigate }: { collapsed?: boolean; onNavigate?: () => void }) { return <Link className={collapsed ? "brand brand--collapsed" : "brand"} href="/platform" onClick={onNavigate} aria-label="theCliniQ Platform Admin home"><span className="brand-logo"><Image src="/brand/thecliniq-logo-compact.png" alt="theCliniQ" width={765} height={309} priority /></span></Link>; }
 function Sidebar({ drawer = false, collapsed = false, onNavigate, onToggle }: { drawer?: boolean; collapsed?: boolean; onNavigate?: () => void; onToggle?: () => void }) { return <aside className={`${drawer ? "sidebar sidebar--drawer" : "sidebar"}${collapsed ? " sidebar--collapsed" : ""}`}><div className="sidebar-brand-row"><Brand collapsed={collapsed} onNavigate={onNavigate} />{!drawer && <button type="button" className="sidebar-toggle" onClick={onToggle} aria-label={collapsed ? "Expand navigation sidebar" : "Collapse navigation sidebar"} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}><span className="sidebar-toggle-icon" aria-hidden="true" /></button>}</div><SidebarNavigation collapsed={collapsed} onNavigate={onNavigate} />{drawer && <MoreNavigation inDrawer onNavigate={onNavigate} />}<div className="sidebar-footer"><span className="environment-dot" /><span>Platform workspace</span></div></aside>; }
 
-function TopNavigation() { const pathname = usePathname(); return <nav className="top-navigation" aria-label="Platform sections">{primaryNavigation.map((item) => { const active = navigation.some((candidate) => candidate.group === item.group && isActive(pathname, candidate.href)); return <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} className={active ? "top-navigation-item top-navigation-item--active" : "top-navigation-item"}>{item.group === "Overview" ? item.label : item.group}</Link>; })}<MoreNavigation /></nav>; }
+function TopNavigation() { const pathname = usePathname(); return <nav className="top-navigation" aria-label="Platform sections">{primaryNavigation.map((item) => { const active = navigation.some((candidate) => candidate.group === item.group && isActive(pathname, candidate.href)); return <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} className={active ? "top-navigation-item top-navigation-item--active" : "top-navigation-item"}>{item.label}</Link>; })}<MoreNavigation /></nav>; }
 
-export function AdminShell({ children }: { children: ReactNode }) { const [menuOpen, setMenuOpen] = useState(false); const [sidebarCollapsed, setSidebarCollapsed] = useState(false); const [searchOpen, setSearchOpen] = useState(false); const searchTriggerRef = useRef<HTMLButtonElement>(null); const { user, logout } = useAuth(); const email = user?.email ?? "Account"; useEffect(() => { const openWithShortcut = (event: KeyboardEvent) => { if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "k") { event.preventDefault(); setSearchOpen(true); } }; document.addEventListener("keydown", openWithShortcut); return () => document.removeEventListener("keydown", openWithShortcut); }, []); return <div className={`admin-shell${sidebarCollapsed ? " admin-shell--sidebar-collapsed" : ""}`}><Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed((collapsed) => !collapsed)} /><Drawer open={menuOpen} onClose={() => setMenuOpen(false)}><Sidebar drawer onNavigate={() => setMenuOpen(false)} /></Drawer><div className="workspace"><header className="topbar"><Button variant="quiet" className="menu-button" onClick={() => setMenuOpen(true)} aria-label="Open navigation"><span className="menu-icon" aria-hidden="true" /><span className="sr-only">Open navigation</span></Button><button ref={searchTriggerRef} type="button" className="global-search-trigger" onClick={() => setSearchOpen(true)} aria-label="Search platform navigation"><SearchIcon /><span>Search</span><kbd>⌘K</kbd></button><TopNavigation /><div className="topbar-actions"><span className="platform-role">Platform Administrator</span><NotificationPlaceholder /><ProfileMenu email={email} onLogout={logout} /></div></header><main className="content">{children}</main></div><GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} triggerRef={searchTriggerRef} /></div>; }
+export function AdminShell({ children }: { children: ReactNode }) { const [menuOpen, setMenuOpen] = useState(false); const [sidebarCollapsed, setSidebarCollapsed] = useState(false); const [searchOpen, setSearchOpen] = useState(false); const searchTriggerRef = useRef<HTMLButtonElement>(null); const { user, logout } = useAuth(); const email = user?.email ?? "Account"; useEffect(() => { const openWithShortcut = (event: KeyboardEvent) => { if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "k") { event.preventDefault(); setSearchOpen(true); } }; document.addEventListener("keydown", openWithShortcut); return () => document.removeEventListener("keydown", openWithShortcut); }, []); return <div className={`admin-shell${sidebarCollapsed ? " admin-shell--sidebar-collapsed" : ""}`}><Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed((collapsed) => !collapsed)} /><Drawer open={menuOpen} onClose={() => setMenuOpen(false)} placement="left" title="Navigation"><Sidebar drawer onNavigate={() => setMenuOpen(false)} /></Drawer><div className="workspace"><header className="topbar"><Button variant="quiet" className="menu-button" onClick={() => setMenuOpen(true)} aria-label="Open navigation"><span className="menu-icon" aria-hidden="true" /><span className="sr-only">Open navigation</span></Button><button ref={searchTriggerRef} type="button" className="global-search-trigger" onClick={() => setSearchOpen(true)} aria-label="Search platform navigation"><SearchIcon /><span>Search</span><kbd>⌘K</kbd></button><TopNavigation /><div className="topbar-actions"><span className="platform-role">Platform Administrator</span><NotificationPlaceholder /><ProfileMenu email={email} onLogout={logout} /></div></header><main className="content">{children}</main></div><GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} triggerRef={searchTriggerRef} /></div>; }

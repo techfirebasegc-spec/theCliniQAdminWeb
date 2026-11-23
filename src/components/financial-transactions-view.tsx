@@ -13,6 +13,8 @@ import {
   DatePicker,
   EmptyState,
   ErrorState,
+  FilterBar,
+  FilterGroup,
   Input,
   LoadingState,
   PageHeader,
@@ -114,8 +116,11 @@ export function FinancialTransactionsView() {
         eyebrow="Financial Operations"
         title="Unified Financial Transactions Ledger"
         description="Every financial transaction across online appointments, offline consultations, subscriptions, and provider payouts."
-      >
-        <div className={styles.filterRow}>
+      />
+
+      {/* Modern Horizontal Filter Bar */}
+      <FilterBar>
+        <FilterGroup label="Search">
           <Input
             placeholder="Search reference, patient, doctor…"
             value={search}
@@ -123,8 +128,11 @@ export function FinancialTransactionsView() {
               setSearch(e.target.value);
               setOffset(0);
             }}
-            style={{ minWidth: 220 }}
+            style={{ minWidth: 200 }}
           />
+        </FilterGroup>
+
+        <FilterGroup label="Channel">
           <Select
             value={channel}
             onChange={(e) => {
@@ -139,24 +147,31 @@ export function FinancialTransactionsView() {
             <option value="MANUAL_PAYOUT">Payouts / Settlements</option>
             <option value="REFUND">Refunds</option>
           </Select>
-          <span>From</span>
+        </FilterGroup>
+
+        <FilterGroup label="Date Range">
           <DatePicker
+            aria-label="From date"
             value={from}
             onChange={(e) => {
               setFrom(e.target.value);
               setOffset(0);
             }}
           />
-          <span>To</span>
+          <span style={{ color: "#94a3b8", fontSize: 13 }}>to</span>
           <DatePicker
+            aria-label="To date"
             value={to}
             onChange={(e) => {
               setTo(e.target.value);
               setOffset(0);
             }}
           />
-          <Button variant="secondary" onClick={() => setRefresh((r) => r + 1)}>
-            Search
+        </FilterGroup>
+
+        <div className="filter-bar-actions">
+          <Button variant="primary" onClick={() => setRefresh((r) => r + 1)}>
+            Apply Filters
           </Button>
           {(search || channel || from || to) && (
             <Button
@@ -167,13 +182,14 @@ export function FinancialTransactionsView() {
                 setFrom("");
                 setTo("");
                 setOffset(0);
+                setRefresh((r) => r + 1);
               }}
             >
               Reset
             </Button>
           )}
         </div>
-      </PageHeader>
+      </FilterBar>
 
       {error ? (
         <div>

@@ -55,6 +55,7 @@ import {
   type VerificationEvidence,
 } from "../lib/platform-api/platform-admin";
 import { PlatformApiError } from "../lib/platform-api/client";
+import { PlatformIntelligenceDashboard } from "./platform-intelligence-dashboard";
 import dashboardStyles from "./platform-dashboard.module.css";
 import {
   Badge,
@@ -64,6 +65,8 @@ import {
   ConfirmationDialog,
   EmptyState,
   ErrorState,
+  FilterBar,
+  FilterGroup,
   Filters,
   Input,
   LoadingState,
@@ -133,50 +136,7 @@ function DashboardIcon({ icon }: { icon: DashboardMetricIcon }) {
 }
 
 export function PlatformDashboard() {
-  const [data, setData] = useState<PlatformMetrics | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const refreshDashboard = useCallback(() => {
-    setRefreshing(true);
-    setError(null);
-    void platformDashboard()
-      .then(setData)
-      .catch((cause) => setError(errorMessage(cause)))
-      .finally(() => setRefreshing(false));
-  }, []);
-  useEffect(() => {
-    void platformDashboard()
-      .then(setData)
-      .catch((cause) => setError(errorMessage(cause)));
-  }, []);
-  const refresh = <Button type="button" variant="secondary" onClick={refreshDashboard} disabled={refreshing}>{refreshing ? "Refreshing…" : "Refresh"}</Button>;
-  if (error && !data) return <div className={dashboardStyles.dashboard}><Page crumbs={["Platform Admin", "Dashboard"]}><PageHeader eyebrow="The CliniQ Platform" title="Platform Dashboard" description="A cross-tenant operational overview using the platform metrics available to this workspace." action={refresh} /><ErrorState detail={error} /></Page></div>;
-  if (!data) return <div className={dashboardStyles.dashboard}><Page crumbs={["Platform Admin", "Dashboard"]}><PageHeader eyebrow="The CliniQ Platform" title="Platform Dashboard" description="A cross-tenant operational overview using the platform metrics available to this workspace." /><LoadingState label="Loading platform overview…" /></Page></div>;
-  const metrics = [
-    { label: "Clinics", value: data.clinics, href: "/platform/clinics", icon: "clinic" as const },
-    { label: "Doctors", value: data.doctors, href: "/platform/doctors", icon: "doctor" as const },
-    { label: "Patients", value: data.patients, icon: "patient" as const },
-    { label: "Active invitations", value: data.activeInvitations, href: "/platform/invitations", icon: "invitation" as const },
-    { label: "Upcoming appointments", value: data.upcomingAppointments, icon: "appointment" as const },
-  ];
-  const isEmpty = metrics.every((metric) => metric.value === 0);
-  return (
-    <div className={dashboardStyles.dashboard}>
-    <Page crumbs={["Platform Admin", "Dashboard"]}>
-      <PageHeader eyebrow="The CliniQ Platform" title="Platform Dashboard" description="A cross-tenant operational overview using the platform metrics available to this workspace." action={refresh} />
-      {error ? <ErrorState detail={`${error} Showing the most recently loaded overview.`} /> : null}
-      {isEmpty ? <EmptyState title="No platform activity yet" detail="The dashboard will show platform totals once records are available." /> : <section className={dashboardStyles.metricGrid} aria-label="Platform operational metrics">
-        {metrics.map((metric) => (
-          <Card className={`${dashboardStyles.metricCard}${metric.icon === "appointment" ? ` ${dashboardStyles.appointmentMetric}` : ""}`} key={metric.label}>
-            <div className={dashboardStyles.metricHeader}><span className={dashboardStyles.metricIcon}><DashboardIcon icon={metric.icon} /></span><p>{metric.label}</p></div>
-            <strong>{metric.value}</strong>
-            {metric.href ? <Link href={metric.href} className={dashboardStyles.metricLink}>View {metric.label.toLocaleLowerCase()}<span aria-hidden="true">→</span></Link> : null}
-          </Card>
-        ))}
-      </section>}
-    </Page>
-    </div>
-  );
+  return <PlatformIntelligenceDashboard />;
 }
 
 export function ClinicsPage() {
@@ -212,12 +172,30 @@ export function ClinicsPage() {
   });
   return (
     <Page crumbs={["Platform Admin", "Clinics"]}>
-      <PageHeader eyebrow="Organizations" title="Clinics" description="Every clinic, owner onboarding state, and public-discovery approval." action={<Link className="button button--primary" href="/platform/clinics/new">Create clinic</Link>}>
-        <Filters>
+      <PageHeader
+        eyebrow="Organizations"
+        title="Clinics"
+        description="Every clinic, owner onboarding state, and public-discovery approval."
+        action={<Link className="button button--primary" href="/platform/clinics/new">Create clinic</Link>}
+      />
+      <FilterBar>
+        <FilterGroup label="Search">
           <Search label="Search clinics or owners" value={query} onChange={(event) => setQuery(event.target.value)} />
-          <Select aria-label="Filter clinic status" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option><option value="ACTIVE">Active</option><option value="DRAFT">Draft</option><option value="SUSPENDED">Suspended</option></Select>
-        </Filters>
-      </PageHeader>
+        </FilterGroup>
+        <FilterGroup label="Status">
+          <Select aria-label="Filter clinic status" value={status} onChange={(event) => setStatus(event.target.value)}>
+            <option value="">All statuses</option>
+            <option value="ACTIVE">Active</option>
+            <option value="DRAFT">Draft</option>
+            <option value="SUSPENDED">Suspended</option>
+          </Select>
+        </FilterGroup>
+        {(query || status) && (
+          <div className="filter-bar-actions">
+            <Button variant="quiet" onClick={() => { setQuery(""); setStatus(""); }}>Reset</Button>
+          </div>
+        )}
+      </FilterBar>
       <Card>
         <Table
           headers={[
@@ -453,9 +431,31 @@ export function DoctorsPage() {
   });
   return (
     <Page crumbs={["Platform Admin", "Doctors"]}>
-      <PageHeader eyebrow="Doctors" title="Doctors / Verification" description="Doctor profiles, clinic relationships, and professional verification remain distinct operational states." action={<Button onClick={() => setInviteOpen(true)}>Invite doctor</Button>}>
-        <Filters><Search label="Search doctors or clinics" value={query} onChange={(event) => setQuery(event.target.value)} /><Select aria-label="Filter professional verification" value={verification} onChange={(event) => setVerification(event.target.value)}><option value="">All verification states</option><option value="NOT_SUBMITTED">Not submitted</option><option value="PENDING">Pending</option><option value="APPROVED">Approved</option><option value="REJECTED">Rejected</option></Select></Filters>
-      </PageHeader>
+      <PageHeader
+        eyebrow="Doctors"
+        title="Doctors / Verification"
+        description="Doctor profiles, clinic relationships, and professional verification remain distinct operational states."
+        action={<Button onClick={() => setInviteOpen(true)}>Invite doctor</Button>}
+      />
+      <FilterBar>
+        <FilterGroup label="Search">
+          <Search label="Search doctors or clinics" value={query} onChange={(event) => setQuery(event.target.value)} />
+        </FilterGroup>
+        <FilterGroup label="Verification">
+          <Select aria-label="Filter professional verification" value={verification} onChange={(event) => setVerification(event.target.value)}>
+            <option value="">All verification states</option>
+            <option value="NOT_SUBMITTED">Not submitted</option>
+            <option value="PENDING">Pending</option>
+            <option value="APPROVED">Approved</option>
+            <option value="REJECTED">Rejected</option>
+          </Select>
+        </FilterGroup>
+        {(query || verification) && (
+          <div className="filter-bar-actions">
+            <Button variant="quiet" onClick={() => { setQuery(""); setVerification(""); }}>Reset</Button>
+          </div>
+        )}
+      </FilterBar>
       <Card>
         <Table headers={["Doctor", "Account status", "Professional verification", "Clinics", "Actions"]}>
           {filteredItems.length ? (

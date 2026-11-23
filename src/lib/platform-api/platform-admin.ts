@@ -197,11 +197,11 @@ export function listVerificationEvidence(submissionId: string) { return platform
 export function downloadVerificationEvidence(submissionId: string, fileId: string) { return platformDownload(`/v1/platform/doctor-verification-submissions/${encodeURIComponent(submissionId)}/evidence/${encodeURIComponent(fileId)}/download`); }
 export function approveDoctorVerification(submissionId: string) { return platformPost(`/v1/platform/doctor-verification-submissions/${encodeURIComponent(submissionId)}/approve`); }
 export function rejectDoctorVerification(submissionId: string, rejectionReason: string) { return platformPost(`/v1/platform/doctor-verification-submissions/${encodeURIComponent(submissionId)}/reject`, { rejectionReason }); }
-export function listDoctorApplications() { return platformRequest<{ items: DoctorApplication[] }>("/v1/platform/doctor-applications"); }
+export function listDoctorApplications(query?: { status?: string }) { const q = query?.status ? `?status=${encodeURIComponent(query.status)}` : ""; return platformRequest<{ items: DoctorApplication[] }>(`/v1/platform/doctor-applications${q}`); }
 export function getDoctorApplication(id: string) { return platformRequest<{ application: DoctorApplication }>(`/v1/platform/doctor-applications/${encodeURIComponent(id)}`); }
 export function approveDoctorApplication(id: string) { return platformPost<{ application: DoctorApplication }>(`/v1/platform/doctor-applications/${encodeURIComponent(id)}/approve`); }
 export function rejectDoctorApplication(id: string, rejectionReason: string) { return platformPost<{ application: DoctorApplication }>(`/v1/platform/doctor-applications/${encodeURIComponent(id)}/reject`, { rejectionReason }); }
-export function listClinicApplications() { return platformRequest<{ items: ClinicApplication[] }>("/v1/platform/clinic-applications"); }
+export function listClinicApplications(query?: { status?: string }) { const q = query?.status ? `?status=${encodeURIComponent(query.status)}` : ""; return platformRequest<{ items: ClinicApplication[] }>(`/v1/platform/clinic-applications${q}`); }
 export function getClinicApplication(id: string) { return platformRequest<{ application: ClinicApplication }>(`/v1/platform/clinic-applications/${encodeURIComponent(id)}`); }
 export function approveClinicApplication(id: string) { return platformPost<{ application: ClinicApplication }>(`/v1/platform/clinic-applications/${encodeURIComponent(id)}/approve`); }
 export function rejectClinicApplication(id: string, rejectionReason: string) { return platformPost<{ application: ClinicApplication }>(`/v1/platform/clinic-applications/${encodeURIComponent(id)}/reject`, { rejectionReason }); }
@@ -252,4 +252,115 @@ export function getSubscriptionSubjectEligibility(productKey: SubscriptionProduc
 export function setSubscriptionSubjectEligibility(productKey: SubscriptionProductKey, subjectKind: "CLINIC" | "DOCTOR", subjectId: string, value: SetSubscriptionEligibilityInput) { return platformRequest<{ eligibility: { id: string } }>(`/v1/platform/subscriptions/products/${encodeURIComponent(productKey)}/eligibility/${encodeURIComponent(subjectKind)}/${encodeURIComponent(subjectId)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(value) }); }
 export const listSubscriptionEligibility = getSubscriptionSubjectEligibility;
 export const setSubscriptionEligibility = setSubscriptionSubjectEligibility;
+
+export type EnquiryType = "DEMO_DOCTOR" | "DEMO_CLINIC" | "CAREER" | "PARTNER" | "GENERAL";
+export type EnquiryStatus = "NEW" | "UNDER_REVIEW" | "IN_PROGRESS" | "RESOLVED" | "CLOSED";
+export type Enquiry = {
+  id: string;
+  referenceNo: string;
+  type: EnquiryType;
+  name: string;
+  email: string;
+  mobile: string | null;
+  message: string;
+  status: EnquiryStatus;
+  metadata: Record<string, unknown>;
+  adminNotes: string | null;
+  assignedToAccountId: string | null;
+  reviewerAccountId: string | null;
+  submittedAt: string;
+  reviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+export type EnquiryStats = {
+  total: number;
+  new: number;
+  underReview: number;
+  inProgress: number;
+  resolved: number;
+  closed: number;
+  demoDoctor: number;
+  demoClinic: number;
+  career: number;
+  partner: number;
+  general: number;
+  doctorApplications: number;
+  clinicApplications: number;
+};
+export function listEnquiries(query?: { type?: string; status?: string; search?: string; page?: number; limit?: number }) {
+  const p = new URLSearchParams();
+  if (query?.type) p.set("type", query.type);
+  if (query?.status) p.set("status", query.status);
+  if (query?.search) p.set("search", query.search);
+  if (query?.page) p.set("page", String(query.page));
+  if (query?.limit) p.set("limit", String(query.limit));
+  const s = p.toString();
+  return platformRequest<{ items: Enquiry[]; total: number; page: number; limit: number }>(`/v1/platform/enquiries${s ? `?${s}` : ""}`);
+}
+export function getEnquiryStats() {
+  return platformRequest<EnquiryStats>("/v1/platform/enquiries/stats");
+}
+export function getEnquiry(id: string) {
+  return platformRequest<{ enquiry: Enquiry }>(`/v1/platform/enquiries/${encodeURIComponent(id)}`);
+}
+export function updateEnquiryStatus(id: string, status: EnquiryStatus, adminNotes?: string) {
+  return platformPatch<{ enquiry: Enquiry }>(`/v1/platform/enquiries/${encodeURIComponent(id)}`, { status, adminNotes });
+}
+
+export type PartnerStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
+export type PlatformPartner = {
+  id: string;
+  name: string;
+  slug: string;
+  category: string;
+  logoUrl: string | null;
+  description: string;
+  websiteUrl: string | null;
+  status: PartnerStatus;
+  isPublished: boolean;
+  displayOrder: number;
+  metadata: Record<string, unknown>;
+  createdByAccountId: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+export type PlatformPartnerInput = {
+  name: string;
+  slug?: string;
+  category?: string;
+  logoUrl?: string | null;
+  description: string;
+  websiteUrl?: string | null;
+  displayOrder?: number;
+  status?: PartnerStatus;
+  isPublished?: boolean;
+};
+export function listPlatformPartners(query?: { status?: PartnerStatus; search?: string }) {
+  const p = new URLSearchParams();
+  if (query?.status) p.set("status", query.status);
+  if (query?.search) p.set("search", query.search);
+  const s = p.toString();
+  return platformRequest<{ items: PlatformPartner[] }>(`/v1/platform/partners${s ? `?${s}` : ""}`);
+}
+export function getPlatformPartner(id: string) {
+  return platformRequest<{ partner: PlatformPartner }>(`/v1/platform/partners/${encodeURIComponent(id)}`);
+}
+export function createPlatformPartner(input: PlatformPartnerInput) {
+  return platformPost<{ partner: PlatformPartner }>("/v1/platform/partners", input);
+}
+export function updatePlatformPartner(id: string, input: Partial<PlatformPartnerInput>) {
+  return platformPatch<{ partner: PlatformPartner }>(`/v1/platform/partners/${encodeURIComponent(id)}`, input);
+}
+export function publishPlatformPartner(id: string) {
+  return platformPost<{ partner: PlatformPartner }>(`/v1/platform/partners/${encodeURIComponent(id)}/publish`, {});
+}
+export function unpublishPlatformPartner(id: string) {
+  return platformPost<{ partner: PlatformPartner }>(`/v1/platform/partners/${encodeURIComponent(id)}/unpublish`, {});
+}
+export function deletePlatformPartner(id: string) {
+  return platformDelete<{ success: boolean }>(`/v1/platform/partners/${encodeURIComponent(id)}`);
+}
+
 

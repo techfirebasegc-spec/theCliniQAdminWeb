@@ -20,6 +20,8 @@ import {
   DatePicker,
   EmptyState,
   ErrorState,
+  FilterBar,
+  FilterGroup,
   Input,
   LoadingState,
   Modal,
@@ -190,8 +192,11 @@ export function FinancialSettlementsView() {
             + Generate Settlement Statement
           </Button>
         }
-      >
-        <div className={styles.filterRow}>
+      />
+
+      {/* Modern Horizontal Filter Bar */}
+      <FilterBar>
+        <FilterGroup label="Status">
           <Select
             value={status}
             onChange={(e) => {
@@ -205,6 +210,9 @@ export function FinancialSettlementsView() {
             <option value="PAID">Paid</option>
             <option value="CANCELLED">Cancelled</option>
           </Select>
+        </FilterGroup>
+
+        <FilterGroup label="Beneficiary">
           <Select
             value={beneficiaryKind}
             onChange={(e) => {
@@ -216,8 +224,11 @@ export function FinancialSettlementsView() {
             <option value="CLINIC">Clinics</option>
             <option value="INDEPENDENT_DOCTOR">Independent Doctors</option>
           </Select>
+        </FilterGroup>
+
+        <div className="filter-bar-actions">
           <Button variant="secondary" onClick={() => setRefresh((r) => r + 1)}>
-            Filter
+            Apply Filter
           </Button>
           {(status || beneficiaryKind) && (
             <Button
@@ -226,13 +237,14 @@ export function FinancialSettlementsView() {
                 setStatus("");
                 setBeneficiaryKind("");
                 setOffset(0);
+                setRefresh((r) => r + 1);
               }}
             >
               Reset
             </Button>
           )}
         </div>
-      </PageHeader>
+      </FilterBar>
 
       {/* 1. Provider Payables Balances Section */}
       <div className={styles.tableSection}>

@@ -6,8 +6,28 @@ type ErrorBody = { error?: { code?: unknown; message?: unknown; requestId?: unkn
 
 function url(path: string) { return `${process.env.NEXT_PUBLIC_PLATFORM_API_BASE_URL?.replace(/\/$/, "") ?? ""}${path}`; }
 
+type SessionRenewCallback = () => Promise<boolean>;
+let sessionRenewalCallback: SessionRenewCallback | null = null;
+let renewalPromise: Promise<boolean> | null = null;
+
+export function registerSessionRenewCallback(callback: SessionRenewCallback | null) {
+  sessionRenewalCallback = callback;
+}
+
 export async function platformRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(url(path), { ...init, credentials: "include" });
+  let response = await fetch(url(path), { ...init, credentials: "include" });
+
+  // If 401 and not an authentication endpoint, attempt silent token refresh and session renewal once
+  if (response.status === 401 && !path.startsWith("/v1/auth/") && sessionRenewalCallback) {
+    if (!renewalPromise) {
+      renewalPromise = sessionRenewalCallback().finally(() => { renewalPromise = null; });
+    }
+    const renewed = await renewalPromise;
+    if (renewed) {
+      response = await fetch(url(path), { ...init, credentials: "include" });
+    }
+  }
+
   if (!response.ok) {
     const body = await response.json().catch(() => null) as ErrorBody | null;
     const error = body?.error;
@@ -32,7 +52,27 @@ export function platformPut<T>(path: string, body: unknown): Promise<T> {
 export function platformDelete<T>(path: string): Promise<T> { return platformRequest<T>(path, { method: "DELETE" }); }
 
 export async function platformDownload(path: string): Promise<Blob> {
-  const response = await fetch(url(path), { credentials: "include" });
+  let response: Response;
+  try {
+    response = await fetch(url(path), { credentials: "include" });
+  } catch (err) {
+    throw new PlatformApiError(0, "NETWORK_ERROR", undefined, err instanceof Error ? err.message : "Network request failed");
+  }
+
+  if (response.status === 401 && !path.startsWith("/v1/auth/") && sessionRenewalCallback) {
+    if (!renewalPromise) {
+      renewalPromise = sessionRenewalCallback().finally(() => { renewalPromise = null; });
+    }
+    const renewed = await renewalPromise;
+    if (renewed) {
+      try {
+        response = await fetch(url(path), { credentials: "include" });
+      } catch (err) {
+        throw new PlatformApiError(0, "NETWORK_ERROR", undefined, err instanceof Error ? err.message : "Network request failed");
+      }
+    }
+  }
+
   if (!response.ok) {
     const body = await response.json().catch(() => null) as ErrorBody | null;
     const error = body?.error;

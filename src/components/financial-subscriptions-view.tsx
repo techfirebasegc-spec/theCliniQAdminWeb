@@ -14,6 +14,8 @@ import {
   DataTable,
   EmptyState,
   ErrorState,
+  FilterBar,
+  FilterGroup,
   Input,
   LoadingState,
   Modal,
@@ -72,7 +74,6 @@ export function FinancialSubscriptionsView() {
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
     listAdminSubscriptions({
       limit: PAGE_SIZE,
       offset,
@@ -142,8 +143,11 @@ export function FinancialSubscriptionsView() {
         eyebrow="Financial Operations"
         title="Commercial Subscription Finance"
         description="Monitor commercial subscription plans, recurring billing revenue, and subscriber health across clinics and independent doctors."
-      >
-        <div className={styles.filterRow}>
+      />
+
+      {/* Modern Horizontal Filter Bar */}
+      <FilterBar>
+        <FilterGroup label="Search">
           <Input
             placeholder="Search clinic, doctor, sub ID, payment ref…"
             value={search}
@@ -151,8 +155,11 @@ export function FinancialSubscriptionsView() {
               setSearch(e.target.value);
               setOffset(0);
             }}
-            style={{ minWidth: 260 }}
+            style={{ minWidth: 240 }}
           />
+        </FilterGroup>
+
+        <FilterGroup label="Subscriber">
           <Select
             value={subscriberType}
             onChange={(e) => {
@@ -160,10 +167,13 @@ export function FinancialSubscriptionsView() {
               setOffset(0);
             }}
           >
-            <option value="">All Subscriber Types</option>
+            <option value="">All Types</option>
             <option value="CLINIC">Clinics</option>
             <option value="DOCTOR">Independent Doctors</option>
           </Select>
+        </FilterGroup>
+
+        <FilterGroup label="Product">
           <Select
             value={productKey}
             onChange={(e) => {
@@ -175,6 +185,9 @@ export function FinancialSubscriptionsView() {
             <option value="OFFLINE_OPD">Offline OPD Module</option>
             <option value="IPD_MANAGEMENT">IPD Management</option>
           </Select>
+        </FilterGroup>
+
+        <FilterGroup label="Status">
           <Select
             value={status}
             onChange={(e) => {
@@ -182,15 +195,18 @@ export function FinancialSubscriptionsView() {
               setOffset(0);
             }}
           >
-            <option value="">All Subscription Statuses</option>
+            <option value="">All Statuses</option>
             <option value="ACTIVE">Active</option>
             <option value="GRACE">Grace Period</option>
             <option value="SUSPENDED">Suspended</option>
             <option value="EXPIRED">Expired</option>
             <option value="CANCELLED">Cancelled</option>
           </Select>
-          <Button variant="secondary" onClick={() => setRefresh((r) => r + 1)}>
-            Search
+        </FilterGroup>
+
+        <div className="filter-bar-actions">
+          <Button variant="primary" onClick={() => setRefresh((r) => r + 1)}>
+            Apply Filters
           </Button>
           {(status || subscriberType || productKey || search) && (
             <Button
@@ -201,13 +217,14 @@ export function FinancialSubscriptionsView() {
                 setProductKey("");
                 setSearch("");
                 setOffset(0);
+                setRefresh((r) => r + 1);
               }}
             >
               Reset
             </Button>
           )}
         </div>
-      </PageHeader>
+      </FilterBar>
 
       {error ? (
         <div>
