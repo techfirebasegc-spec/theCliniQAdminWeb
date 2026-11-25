@@ -1,9 +1,15 @@
 "use client";
 
 import { AdminShell } from "../../src/components/admin-shell";
-import { Dashboard } from "../../src/components/dashboard";
+import { PlatformDashboard } from "../../src/components/platform-console";
 import { ProtectedRoute } from "../../src/components/protected-route";
 
 export default function DashboardPage() {
-  return <ProtectedRoute><AdminShell><Dashboard /></AdminShell></ProtectedRoute>;
+  return (
+    <ProtectedRoute>
+      <AdminShell>
+        <PlatformDashboard />
+      </AdminShell>
+    </ProtectedRoute>
+  );
 }

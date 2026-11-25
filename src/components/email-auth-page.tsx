@@ -24,7 +24,7 @@ export function EmailAuthPage({ mode }: { mode: "sign-in" | "sign-up" }) {
 
   useEffect(() => {
     if (!loading && user && platformSessionEstablished) {
-      router.replace("/dashboard");
+      router.replace("/platform");
     }
   }, [loading, user, platformSessionEstablished, router]);
 
@@ -32,7 +32,7 @@ export function EmailAuthPage({ mode }: { mode: "sign-in" | "sign-up" }) {
     event.preventDefault();
     try {
       await (isSignUp ? signUp({ email, password }) : signIn({ email, password }));
-      router.replace("/dashboard");
+      router.replace("/platform");
     } catch { /* The provider exposes a safe error. */ }
   }
 
@@ -104,7 +104,7 @@ export function EmailAuthPage({ mode }: { mode: "sign-in" | "sign-up" }) {
           {loading && !platformSessionEstablished ? (
             <LoadingState label="Checking your secure session…" />
           ) : user && platformSessionEstablished ? (
-            <Button onClick={() => router.replace("/dashboard")}>Continue to operations</Button>
+            <Button onClick={() => router.replace("/platform")}>Continue to operations</Button>
           ) : isForgotPassword ? (
             <div>
               <form className="login-form" onSubmit={(e) => void handlePasswordReset(e)}>
