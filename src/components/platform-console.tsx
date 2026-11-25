@@ -33,6 +33,10 @@ import {
   rejectDoctorApplication,
   rejectDoctorVerification,
   resendDoctorInvitation,
+  resendClinicCreatedDoctorActivation,
+  resendClinicCreatedDoctorWelcome,
+  resendDoctorWelcome,
+  resendClinicWelcome,
   retryClinicCreatedDoctorEmailOperation,
   resendOwnerInvitation,
   sendTransactionalEmailTest,
@@ -250,6 +254,7 @@ export function ClinicDetails({ clinicId }: { clinicId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [activating, setActivating] = useState(false);
   const [confirmActivation, setConfirmActivation] = useState(false);
+  const [resendingWelcome, setResendingWelcome] = useState(false);
   const toast = useToast();
   const reload = () => {
     void Promise.all([
@@ -275,6 +280,18 @@ export function ClinicDetails({ clinicId }: { clinicId: string }) {
       setError(errorMessage(cause));
     } finally {
       setActivating(false);
+    }
+  }
+  async function handleResendWelcome() {
+    setResendingWelcome(true);
+    setError(null);
+    try {
+      await resendClinicWelcome(clinicId);
+      toast.show("Welcome email resent to clinic owner.");
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setResendingWelcome(false);
     }
   }
   if (error) return <ErrorState detail={error} />;
@@ -322,6 +339,18 @@ export function ClinicDetails({ clinicId }: { clinicId: string }) {
             </p>
           </div>
         ) : null}
+        <div className="platform-control" style={{ marginTop: "1rem" }}>
+          <Button
+            variant="secondary"
+            disabled={resendingWelcome || activating}
+            onClick={() => void handleResendWelcome()}
+          >
+            {resendingWelcome ? "Sending…" : "Resend Welcome Email"}
+          </Button>
+          <p className="control-help">
+            Resends the clinic onboarding / welcome email to the assigned clinic owner ({item.ownerEmail ?? "no email"}).
+          </p>
+        </div>
       </Card>
       <Card><div className="card-heading"><div><p className="eyebrow">Operating profile</p><h2>Hours and associated doctors</h2></div></div>{item.operatingHours.length ? <ul className="detail-list-compact">{item.operatingHours.map((hour) => <li key={hour.weekday}>Day {hour.weekday}: {hour.opensAt}–{hour.closesAt}</li>)}</ul> : <p className="muted">Operating hours are not available.</p>}{item.doctors.length ? <div className="record-links">{item.doctors.map((doctor) => <Link key={doctor.id} href={`/platform/doctors/${doctor.id}`}>{doctor.displayName ?? "Unnamed doctor"} · {doctor.connectionStatus}</Link>)}</div> : <p className="muted">No clinic-doctor associations are recorded.</p>}</Card>
       <Card><div className="card-heading"><div><p className="eyebrow">Services and readiness</p><h2>Service catalogue</h2></div></div><ServiceTable items={item.services} /></Card>
@@ -503,6 +532,8 @@ export function DoctorDetails({ doctorId }: { doctorId: string }) {
     null,
   );
   const [error, setError] = useState<string | null>(null);
+  const [resendingWelcome, setResendingWelcome] = useState(false);
+  const toast = useToast();
   const reload = () => {
     void Promise.all([
       getPlatformDoctor(doctorId),
@@ -515,6 +546,18 @@ export function DoctorDetails({ doctorId }: { doctorId: string }) {
       .catch((cause) => setError(errorMessage(cause)));
   };
   useEffect(reload, [doctorId]);
+  async function handleResendWelcome() {
+    setResendingWelcome(true);
+    setError(null);
+    try {
+      await resendDoctorWelcome(doctorId);
+      toast.show("Welcome email resent to doctor.");
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setResendingWelcome(false);
+    }
+  }
   if (error) return <ErrorState detail={error} />;
   if (!item || !discovery) return <LoadingState label="Loading doctor…" />;
   return (
@@ -547,12 +590,25 @@ export function DoctorDetails({ doctorId }: { doctorId: string }) {
               : "Not associated"}
           </dd>
           <dt>Account status</dt><dd><StatusBadge value={item.accountStatus} /></dd>
+          <dt>Email</dt><dd><DetailValue value={item.email} /></dd>
           <dt>Professional profile</dt><dd><DetailValue value={item.professionalTitle} /> · <DetailValue value={item.specialization} /> · <DetailValue value={item.yearsExperience === null ? null : `${item.yearsExperience} years`} /></dd>
           <dt>Contact</dt><dd><DetailValue value={item.mobileNumber} /></dd>
           <dt>Created by clinic</dt><dd>{item.createdByClinicId ? <Link href={`/platform/clinics/${item.createdByClinicId}`}>{item.createdByClinicId}</Link> : <span className="muted">Independent or not recorded</span>}</dd>
           <dt>Created / updated</dt><dd>{date(item.createdAt)} · {date(item.updatedAt)}</dd>
         </dl>
         {item.shortIntroduction ? <p className="detail-copy">{item.shortIntroduction}</p> : null}{item.biography ? <p className="detail-copy">{item.biography}</p> : null}
+        <div className="platform-control" style={{ marginTop: "1rem" }}>
+          <Button
+            variant="secondary"
+            disabled={resendingWelcome}
+            onClick={() => void handleResendWelcome()}
+          >
+            {resendingWelcome ? "Sending…" : "Resend Welcome Email"}
+          </Button>
+          <p className="control-help">
+            Resends the doctor welcome email to {item.email ?? "registered doctor email"}.
+          </p>
+        </div>
       </Card>
       <Card><div className="card-heading"><div><p className="eyebrow">Professional information</p><h2>Qualifications and relationships</h2></div></div>{item.qualifications.length ? <ul className="detail-list-compact">{item.qualifications.map((qualification) => <li key={`${qualification.credential}-${qualification.institution}`}>{qualification.credential} · {qualification.institution}{qualification.completionYear ? ` (${qualification.completionYear})` : ""}</li>)}</ul> : <p className="muted">Qualifications are not available.</p>}<p><strong>Languages:</strong> {item.languages.length ? item.languages.join(", ") : "Not available"}</p>{item.clinics.length ? <div className="record-links">{item.clinics.map((clinic) => <Link key={clinic.id} href={`/platform/clinics/${clinic.id}`}>{clinic.displayName} · {clinic.connectionStatus}</Link>)}</div> : null}</Card>
       <Card><div className="card-heading"><div><p className="eyebrow">Services and readiness</p><h2>Service catalogue</h2></div></div><ServiceTable items={item.services} /></Card>
@@ -564,6 +620,7 @@ export function DoctorDetails({ doctorId }: { doctorId: string }) {
         revoke={() => revokeDoctorPublicDiscovery(doctorId)}
         onChanged={reload}
       />
+      <Toast message={toast.message} />
     </Page>
   );
 }
@@ -801,6 +858,38 @@ export function ClinicCreatedDoctorsPage() {
       setRetrying(null);
     }
   }
+  async function resendActivation(item: ClinicCreatedDoctor) {
+    setBusy(`${item.id}:activation`);
+    setError(null);
+    setNotice(null);
+    try {
+      await resendClinicCreatedDoctorActivation(item.id);
+      setNotice(`Activation email resent for ${item.displayName}.`);
+      void loadOperations(item.id);
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function resendWelcome(item: ClinicCreatedDoctor) {
+    setBusy(`${item.id}:welcome`);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await resendClinicCreatedDoctorWelcome(item.id);
+      if (res?.type === "ACTIVATION") {
+        setNotice(`Account not yet claimed; activation email resent for ${item.displayName}.`);
+      } else {
+        setNotice(`Welcome email resent for ${item.displayName}.`);
+      }
+      void loadOperations(item.id);
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setBusy(null);
+    }
+  }
   if (error) return <ErrorState detail={error} />;
   if (!items) return <LoadingState label="Loading clinic-created doctors…" />;
   const filteredItems = items.filter((item) => [item.displayName, item.email, item.specialization, clinics[item.clinicId] ?? ""].join(" ").toLowerCase().includes(query.trim().toLowerCase()));
@@ -847,19 +936,40 @@ export function ClinicCreatedDoctorsPage() {
                 onRetry={(operation) => void retryOperation(item, operation)}
               /> : null}
               <span className="row-actions">
-                {item.status === "PENDING" ? <><Button
-                  disabled={busy !== null}
-                  onClick={() => void review(item, "APPROVED")}
-                >
-                  {busy === item.id ? "Saving…" : "Approve"}
-                </Button>
-                <Button
-                  disabled={busy !== null}
-                  variant="secondary"
-                  onClick={() => void review(item, "REJECTED")}
-                >
-                  Reject
-                </Button></> : null}
+                {item.status === "PENDING" ? (
+                  <>
+                    <Button
+                      disabled={busy !== null}
+                      onClick={() => void review(item, "APPROVED")}
+                    >
+                      {busy === item.id ? "Saving…" : "Approve"}
+                    </Button>
+                    <Button
+                      disabled={busy !== null}
+                      variant="secondary"
+                      onClick={() => void review(item, "REJECTED")}
+                    >
+                      Reject
+                    </Button>
+                  </>
+                ) : item.status === "APPROVED" ? (
+                  <>
+                    <Button
+                      variant="secondary"
+                      disabled={busy !== null}
+                      onClick={() => void resendActivation(item)}
+                    >
+                      {busy === `${item.id}:activation` ? "Sending…" : "Resend Activation Email"}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      disabled={busy !== null}
+                      onClick={() => void resendWelcome(item)}
+                    >
+                      {busy === `${item.id}:welcome` ? "Sending…" : "Resend Welcome Email"}
+                    </Button>
+                  </>
+                ) : null}
               </span>
             </Card>
           ))}
