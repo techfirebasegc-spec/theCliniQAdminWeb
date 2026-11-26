@@ -18,7 +18,38 @@ export type OwnerInvitation = { id: string; tenantId: string; email: string | nu
 export type PlatformMetrics = { clinics: number; doctors: number; patients: number; activeInvitations: number; upcomingAppointments: number };
 export type PublicDiscoveryControl = { subjectId: string; subjectKind: "CLINIC" | "DOCTOR"; status: "NOT_READY" | "NOT_PUBLISHED" | "PUBLISHED" | "REVOKED"; publishedExposureCount: number; reason: string | null };
 export type VerificationEvidence = { id: string; originalFilename: string; contentType: string; byteSize: number; status: string };
-export type DoctorVerificationSubmission = { id: string; status: "PENDING" | "APPROVED" | "REJECTED"; registrationAuthority: string; registrationJurisdiction: string; registrationIdentifier: string; submittedAt: string; reviewedAt: string | null; rejectionReason: string | null };
+export type DoctorVerificationHistoryEntry = {
+  id: string;
+  submissionId: string;
+  doctorProfileId: string;
+  eventType:
+    | "SUBMITTED"
+    | "RESUBMITTED"
+    | "AUTO_APPROVAL_SCHEDULED"
+    | "HELD_FOR_MANUAL_REVIEW"
+    | "APPROVED_MANUAL"
+    | "APPROVED_AUTO"
+    | "REJECTED";
+  actorAccountId: string | null;
+  actorKind: "DOCTOR" | "PLATFORM_ADMIN" | "SYSTEM_POLICY";
+  reason: string | null;
+  occurredAt: string;
+};
+export type DoctorVerificationSubmission = {
+  id: string;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  registrationAuthority: string;
+  registrationJurisdiction: string;
+  registrationIdentifier: string;
+  submittedAt: string;
+  reviewedAt: string | null;
+  rejectionReason: string | null;
+  documentFileIds?: string[];
+  approvalSource?: "ADMIN_MANUAL" | "AUTO_POLICY" | null;
+  autoApprovalEligible?: boolean;
+  autoApprovalDueAt?: string | null;
+  manualReviewReason?: string | null;
+};
 export type DoctorApplication = { id: string; doctorProfileId: string; doctorAccountId: string; displayName: string | null; profileStatus: string; professionalVerificationStatus: string; status: "PENDING" | "APPROVED" | "REJECTED"; submittedAt: string; reviewedAt: string | null; reviewerAccountId: string | null; rejectionReason: string | null };
 export type ClinicApplication = { id: string; applicantAccountId: string; legalName: string; clinicName: string; ownerEmail: string; status: "PENDING" | "APPROVED" | "REJECTED"; submittedAt: string; reviewerAccountId: string | null; reviewedAt: string | null; rejectionReason: string | null };
 export type ClinicCreatedDoctor = { id: string; clinicId: string; doctorProfileId: string; accountId: string; displayName: string; email: string; mobileNumber: string; dateOfBirth: string; sex: "FEMALE" | "MALE" | "NON_BINARY" | "NOT_SPECIFIED"; specialization: string; status: "PENDING" | "APPROVED" | "REJECTED"; credentialStatus: "PENDING_SETUP" | "READY" | "CLAIMED"; rejectionReason: string | null };
@@ -193,6 +224,7 @@ export function getDoctorPublicDiscovery(id: string) { return platformRequest<{ 
 export function publishDoctorPublicDiscovery(id: string) { return platformPost<{ publicDiscovery: PublicDiscoveryControl }>(`/v1/platform/doctors/${encodeURIComponent(id)}/public-discovery/publish`); }
 export function revokeDoctorPublicDiscovery(id: string) { return platformPost<{ publicDiscovery: PublicDiscoveryControl }>(`/v1/platform/doctors/${encodeURIComponent(id)}/public-discovery/revoke`); }
 export function listDoctorVerificationSubmissions(id: string) { return platformRequest<{ items: DoctorVerificationSubmission[] }>(`/v1/platform/doctors/${encodeURIComponent(id)}/verification-submissions`); }
+export function listDoctorVerificationHistory(id: string) { return platformRequest<{ items: DoctorVerificationHistoryEntry[] }>(`/v1/platform/doctors/${encodeURIComponent(id)}/verification-history`); }
 export function listVerificationEvidence(submissionId: string) { return platformRequest<{ items: VerificationEvidence[] }>(`/v1/platform/doctor-verification-submissions/${encodeURIComponent(submissionId)}/evidence`); }
 export function downloadVerificationEvidence(submissionId: string, fileId: string) { return platformDownload(`/v1/platform/doctor-verification-submissions/${encodeURIComponent(submissionId)}/evidence/${encodeURIComponent(fileId)}/download`); }
 export function approveDoctorVerification(submissionId: string) { return platformPost(`/v1/platform/doctor-verification-submissions/${encodeURIComponent(submissionId)}/approve`); }

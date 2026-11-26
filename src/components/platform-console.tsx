@@ -21,6 +21,7 @@ import {
   listReadyClinicCreatedDoctors,
   listDoctorApplications,
   listDoctorInvitations,
+  listDoctorVerificationHistory,
   listDoctorVerificationSubmissions,
   listOwnerInvitations,
   listPlatformClinics,
@@ -49,6 +50,7 @@ import {
   type ClinicCreatedDoctor,
   type ClinicCreatedDoctorEmailOperation,
   type DoctorApplication,
+  type DoctorVerificationHistoryEntry,
   type DoctorVerificationSubmission,
   type OwnerInvitation,
   type PlatformClinic,
@@ -475,7 +477,7 @@ export function DoctorsPage() {
             <option value="">All verification states</option>
             <option value="NOT_SUBMITTED">Not submitted</option>
             <option value="PENDING">Pending</option>
-            <option value="APPROVED">Approved</option>
+            <option value="VERIFIED">Verified</option>
             <option value="REJECTED">Rejected</option>
           </Select>
         </FilterGroup>
@@ -534,18 +536,29 @@ export function DoctorDetails({ doctorId }: { doctorId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [resendingWelcome, setResendingWelcome] = useState(false);
   const toast = useToast();
-  const reload = () => {
-    void Promise.all([
-      getPlatformDoctor(doctorId),
-      getDoctorPublicDiscovery(doctorId),
-    ])
-      .then(([doctor, visibility]) => {
+  const reload = useCallback(() => {
+    setError(null);
+    void getPlatformDoctor(doctorId)
+      .then(async (doctor) => {
         setItem(doctor.doctor);
-        setDiscovery(visibility.publicDiscovery);
+        try {
+          const visibility = await getDoctorPublicDiscovery(doctorId);
+          setDiscovery(visibility.publicDiscovery);
+        } catch {
+          setDiscovery({
+            subjectId: doctorId,
+            subjectKind: "DOCTOR",
+            status: "NOT_READY",
+            publishedExposureCount: 0,
+            reason: "Discovery status is currently unavailable.",
+          });
+        }
       })
       .catch((cause) => setError(errorMessage(cause)));
-  };
-  useEffect(reload, [doctorId]);
+  }, [doctorId]);
+  useEffect(() => {
+    void Promise.resolve().then(reload);
+  }, [reload]);
   async function handleResendWelcome() {
     setResendingWelcome(true);
     setError(null);
@@ -635,69 +648,116 @@ function VerificationReview({
   const [items, setItems] = useState<DoctorVerificationSubmission[] | null>(
     null,
   );
+  const [history, setHistory] = useState<DoctorVerificationHistoryEntry[]>([]);
   const [evidence, setEvidence] = useState<
     Record<string, VerificationEvidence[]>
   >({});
+  const [evidenceErrors, setEvidenceErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const load = () => {
-    void listDoctorVerificationSubmissions(doctorId)
-      .then(async (result) => {
+  const [rejectTarget, setRejectTarget] = useState<DoctorVerificationSubmission | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [preview, setPreview] = useState<{ filename: string; contentType: string; url: string } | null>(null);
+
+  const load = useCallback(() => {
+    setError(null);
+    void Promise.all([
+      listDoctorVerificationSubmissions(doctorId),
+      listDoctorVerificationHistory(doctorId).catch(() => ({ items: [] as DoctorVerificationHistoryEntry[] })),
+    ])
+      .then(async ([result, historyResult]) => {
         setItems(result.items);
-        const values = await Promise.all(
-          result.items.map(
-            async (submission) =>
-              [
-                submission.id,
-                (await listVerificationEvidence(submission.id)).items,
-              ] as const,
-          ),
+        setHistory(historyResult.items);
+        const settled = await Promise.allSettled(
+          result.items.map(async (submission) => ({
+            id: submission.id,
+            items: (await listVerificationEvidence(submission.id)).items,
+          })),
         );
-        setEvidence(Object.fromEntries(values));
+        const map: Record<string, VerificationEvidence[]> = {};
+        const errMap: Record<string, string> = {};
+        settled.forEach((entry, index) => {
+          const submissionId = result.items[index]!.id;
+          if (entry.status === "fulfilled") {
+            map[submissionId] = entry.value.items;
+          } else {
+            map[submissionId] = [];
+            errMap[submissionId] = errorMessage(entry.reason);
+          }
+        });
+        setEvidence(map);
+        setEvidenceErrors(errMap);
       })
       .catch((cause) => setError(errorMessage(cause)));
-  };
-  useEffect(load, [doctorId]);
-  async function review(
-    submission: DoctorVerificationSubmission,
-    decision: "approve" | "reject",
-  ) {
-    const rejectionReason =
-      decision === "reject"
-        ? window.prompt("Reason for rejection:")?.trim()
-        : undefined;
-    if (decision === "reject" && !rejectionReason) return;
+  }, [doctorId]);
+  useEffect(() => {
+    void Promise.resolve().then(load);
+  }, [load]);
+  useEffect(() => {
+    return () => {
+      if (preview?.url) URL.revokeObjectURL(preview.url);
+    };
+  }, [preview]);
+
+  async function approve(submission: DoctorVerificationSubmission) {
     setBusy(submission.id);
-    setError(null);
+    setActionError(null);
     try {
-      if (decision === "approve")
-        await approveDoctorVerification(submission.id);
-      else await rejectDoctorVerification(submission.id, rejectionReason!);
+      await approveDoctorVerification(submission.id);
       load();
       onChanged();
     } catch (cause) {
-      setError(errorMessage(cause));
+      setActionError(errorMessage(cause));
     } finally {
       setBusy(null);
     }
   }
-  async function download(submissionId: string, item: VerificationEvidence) {
+
+  async function submitReject() {
+    if (!rejectTarget || !rejectReason.trim()) return;
+    setBusy(rejectTarget.id);
+    setActionError(null);
+    try {
+      await rejectDoctorVerification(rejectTarget.id, rejectReason.trim());
+      setRejectTarget(null);
+      setRejectReason("");
+      load();
+      onChanged();
+    } catch (cause) {
+      setActionError(errorMessage(cause));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function openDocument(submissionId: string, item: VerificationEvidence, mode: "preview" | "download") {
+    if (item.status !== "AVAILABLE") {
+      setActionError("This document is not in AVAILABLE state and cannot be opened.");
+      return;
+    }
     setBusy(item.id);
-    setError(null);
+    setActionError(null);
     try {
       const blob = await downloadVerificationEvidence(submissionId, item.id);
       const href = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = href;
-      link.download = item.originalFilename;
-      link.click();
-      URL.revokeObjectURL(href);
+      if (mode === "preview") {
+        if (preview?.url) URL.revokeObjectURL(preview.url);
+        setPreview({ filename: item.originalFilename, contentType: item.contentType, url: href });
+      } else {
+        const link = document.createElement("a");
+        link.href = href;
+        link.download = item.originalFilename;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(href), 1500);
+      }
     } catch (cause) {
-      setError(errorMessage(cause));
+      setActionError(errorMessage(cause));
     } finally {
       setBusy(null);
     }
   }
+
   if (error) return <ErrorState detail={error} />;
   if (!items) return <LoadingState label="Loading verification evidence…" />;
   return (
@@ -705,65 +765,215 @@ function VerificationReview({
       <div className="card-heading">
         <div>
           <p className="eyebrow">Professional verification</p>
-          <h2>Submitted evidence</h2>
+          <h2>Submitted evidence &amp; verification history</h2>
         </div>
       </div>
+      {actionError ? <p className="alert">{actionError}</p> : null}
       {items.length ? (
-        items.map((submission) => (
-          <section className="section" key={submission.id}>
-            <p>
-              <Badge tone={tone(submission.status)}>{submission.status}</Badge>{" "}
-              Submitted {date(submission.submittedAt)}
-            </p>
-            <p className="muted">
-              {submission.registrationAuthority} ·{" "}
-              {submission.registrationJurisdiction} ·{" "}
-              {submission.registrationIdentifier}
-            </p>
-            <ul>
-              {(evidence[submission.id] ?? []).map((item) => (
-                <li key={item.id}>
-                  {item.originalFilename}{" "}
-                  <small>
-                    {item.contentType} · {item.byteSize} bytes
-                  </small>
-                  <Button
-                    disabled={busy !== null}
-                    variant="quiet"
-                    onClick={() => void download(submission.id, item)}
-                  >
-                    Download
-                  </Button>
-                </li>
-              ))}
-            </ul>
-            {submission.status === "PENDING" ? (
-              <span className="row-actions">
-                <Button
-                  disabled={busy !== null}
-                  onClick={() => void review(submission, "approve")}
-                >
-                  Approve
-                </Button>
-                <Button
-                  disabled={busy !== null}
-                  variant="secondary"
-                  onClick={() => void review(submission, "reject")}
-                >
-                  Reject
-                </Button>
-              </span>
-            ) : submission.rejectionReason ? (
-              <p className="alert">Rejected: {submission.rejectionReason}</p>
-            ) : null}
-          </section>
-        ))
+        items.map((submission) => {
+          const docs = evidence[submission.id] ?? [];
+          const docsError = evidenceErrors[submission.id];
+          return (
+            <section className="section" key={submission.id}>
+              <p>
+                <Badge tone={tone(submission.status)}>{submission.status}</Badge>{" "}
+                {submission.approvalSource === "AUTO_POLICY" ? (
+                  <Badge tone="neutral">Auto-Policy</Badge>
+                ) : null}{" "}
+                Submitted {date(submission.submittedAt)}
+                {submission.reviewedAt ? ` · Reviewed ${date(submission.reviewedAt)}` : ""}
+              </p>
+              <p className="muted">
+                {submission.registrationAuthority} ·{" "}
+                {submission.registrationJurisdiction} ·{" "}
+                {submission.registrationIdentifier}
+              </p>
+              {submission.status === "PENDING" && !submission.autoApprovalEligible ? (
+                <p className="alert">
+                  Manual review required: {submission.manualReviewReason ?? "Flagged by automated verification policy."}
+                </p>
+              ) : submission.status === "PENDING" && submission.autoApprovalDueAt ? (
+                <p className="muted">
+                  Eligible for automated policy approval after {date(submission.autoApprovalDueAt)} if all documents remain valid.
+                </p>
+              ) : null}
+              {docsError ? (
+                <p className="alert">Could not load verification documents: {docsError}</p>
+              ) : docs.length ? (
+                <ul>
+                  {docs.map((item) => (
+                    <li key={item.id}>
+                      {item.originalFilename}{" "}
+                      <small>
+                        {item.contentType} · {item.byteSize} bytes · {item.status}
+                      </small>{" "}
+                      <Button
+                        disabled={busy !== null || item.status !== "AVAILABLE"}
+                        variant="quiet"
+                        onClick={() => void openDocument(submission.id, item, "preview")}
+                      >
+                        Preview
+                      </Button>
+                      <Button
+                        disabled={busy !== null || item.status !== "AVAILABLE"}
+                        variant="quiet"
+                        onClick={() => void openDocument(submission.id, item, "download")}
+                      >
+                        Download
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="alert">No verification documents are attached to this submission.</p>
+              )}
+              {submission.status === "PENDING" ? (
+                <div style={{ marginTop: "0.75rem" }}>
+                  <span className="row-actions">
+                    <Button
+                      disabled={busy !== null}
+                      onClick={() => void approve(submission)}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      disabled={busy !== null}
+                      variant="secondary"
+                      onClick={() => {
+                        setRejectTarget(submission);
+                        setRejectReason("");
+                        setActionError(null);
+                      }}
+                    >
+                      Reject
+                    </Button>
+                  </span>
+                  {rejectTarget?.id === submission.id ? (
+                    <div style={{ marginTop: "0.75rem", padding: "0.75rem", border: "1px solid #cbd5e1", borderRadius: "8px", maxWidth: "520px" }}>
+                      <label style={{ display: "block", marginBottom: "0.5rem" }}>
+                        <span style={{ display: "block", fontWeight: 600, marginBottom: "0.35rem" }}>Rejection reason</span>
+                        <textarea
+                          rows={3}
+                          value={rejectReason}
+                          disabled={busy !== null}
+                          onChange={(e) => setRejectReason(e.target.value)}
+                          placeholder="Explain why the registration document or details could not be verified"
+                          style={{ width: "100%", padding: "0.5rem", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                        />
+                      </label>
+                      <span className="row-actions">
+                        <Button
+                          disabled={busy !== null || !rejectReason.trim()}
+                          variant="danger"
+                          onClick={() => void submitReject()}
+                        >
+                          {busy === submission.id ? "Rejecting…" : "Confirm rejection"}
+                        </Button>
+                        <Button
+                          disabled={busy !== null}
+                          variant="quiet"
+                          onClick={() => {
+                            setRejectTarget(null);
+                            setRejectReason("");
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+              ) : submission.rejectionReason ? (
+                <p className="alert">Rejected: {submission.rejectionReason}</p>
+              ) : null}
+              {(() => {
+                const submissionHistory = history.filter((evt) => evt.submissionId === submission.id);
+                if (submissionHistory.length === 0) return null;
+                return (
+                  <details style={{ marginTop: "0.5rem" }}>
+                    <summary style={{ cursor: "pointer", fontSize: "0.875rem" }}>
+                      Audit timeline ({submissionHistory.length})
+                    </summary>
+                    <ul className="detail-list-compact" style={{ marginTop: "0.4rem" }}>
+                      {submissionHistory.map((evt) => (
+                        <li key={evt.id}>
+                          <strong>{evt.eventType.replaceAll("_", " ")}</strong> ({evt.actorKind.replaceAll("_", " ")}) · {date(evt.occurredAt)}
+                          {evt.reason ? ` — ${evt.reason}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                );
+              })()}
+            </section>
+          );
+        })
       ) : (
         <EmptyState
           title="No verification submission"
           detail="This doctor has not submitted professional-registration evidence."
         />
       )}
+      {preview ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Preview ${preview.filename}`}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.65)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: "10px",
+              width: "min(900px, 95vw)",
+              maxHeight: "90vh",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "0.75rem 1rem",
+                borderBottom: "1px solid #e2e8f0",
+              }}
+            >
+              <strong>{preview.filename}</strong>
+              <Button variant="quiet" onClick={() => setPreview(null)}>
+                Close
+              </Button>
+            </div>
+            <div style={{ padding: "1rem", overflow: "auto", flex: 1, textAlign: "center" }}>
+              {preview.contentType === "application/pdf" ? (
+                <iframe
+                  title={preview.filename}
+                  src={preview.url}
+                  style={{ width: "100%", height: "72vh", border: "0" }}
+                />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  alt={preview.filename}
+                  src={preview.url}
+                  style={{ maxWidth: "100%", maxHeight: "72vh", objectFit: "contain" }}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </Card>
   );
 }
