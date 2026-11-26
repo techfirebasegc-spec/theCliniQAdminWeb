@@ -97,7 +97,7 @@ export function QueryCentre() {
   }, []);
 
   useEffect(() => {
-    void loadData();
+    void Promise.resolve().then(loadData);
   }, [loadData]);
 
   const unifiedRecords = useMemo((): UnifiedRecord[] => {

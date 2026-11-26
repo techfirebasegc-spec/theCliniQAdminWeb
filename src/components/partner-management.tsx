@@ -59,7 +59,7 @@ export function PartnerManagement() {
   }, []);
 
   useEffect(() => {
-    void loadPartners();
+    void Promise.resolve().then(loadPartners);
   }, [loadPartners]);
 
   const openCreateModal = () => {

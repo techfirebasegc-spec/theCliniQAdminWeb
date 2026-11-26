@@ -8,7 +8,17 @@ export function updateHelpArticle(id: string, value: HelpArticleInput) { return 
 export function publishHelpArticle(id: string) { return platformPost<{ article: HelpArticle }>(`/v1/platform/help/articles/${encodeURIComponent(id)}/publish`, {}); }
 export function archiveHelpArticle(id: string) { return platformPost<void>(`/v1/platform/help/articles/${encodeURIComponent(id)}/archive`, {}); }
 
-export type PlatformServiceSummary = { id: string; name: string; status: string; versionStatus: string | null; priceAmountMinor: string | null; currency: string | null; availabilityStatus: string | null; exposureStatus: string | null };
+export type PlatformServiceSummary = { id: string; name: string; status: string; versionStatus: string | null; priceAmountMinor: string | null; currency: string | null; availabilityStatus: string | null; exposureId?: string | null; exposureStatus: string | null };
+export type AdminCreateDoctorServiceInput = {
+  name: string;
+  description?: string | null;
+  status?: "DRAFT" | "ACTIVE";
+  priceAmountMinor?: string | null;
+  currency?: string;
+  holdSeconds?: number;
+  slotDurationMinutes?: number;
+  publishExposure?: boolean;
+};
 export type PlatformClinicAssociation = { id: string; displayName: string; status: string; connectionStatus: string };
 export type PlatformDoctorAssociation = { id: string; displayName: string | null; status: string; professionalVerificationStatus: string; connectionStatus: string };
 export type PlatformClinic = { id: string; tenantId: string; displayName: string; legalName: string; clinicStatus: string; tenantStatus: string; ownerEmail: string | null; ownerMembershipStatus: string | null; invitationStatus: string | null; publicSlug: string | null; about: string | null; publicEmail: string | null; publicPhone: string | null; address: { line1: string; line2: string | null; locality: string; region: string; postalCode: string; countryCode: string } | null; operatingHours: Array<{ weekday: number; opensAt: string; closesAt: string }>; doctors: PlatformDoctorAssociation[]; services: PlatformServiceSummary[]; createdAt: string; updatedAt: string };
@@ -396,6 +406,20 @@ export function unpublishPlatformPartner(id: string) {
 }
 export function deletePlatformPartner(id: string) {
   return platformDelete<{ success: boolean }>(`/v1/platform/partners/${encodeURIComponent(id)}`);
+}
+
+export function createAdminDoctorService(doctorId: string, input: AdminCreateDoctorServiceInput) {
+  return platformPost<{ service: PlatformServiceSummary }>(
+    `/v1/platform/doctors/${encodeURIComponent(doctorId)}/services`,
+    input,
+  );
+}
+
+export function approveAdminDoctorService(doctorId: string, serviceOfferingId: string, clinicId?: string | null) {
+  return platformPost<{ service: PlatformServiceSummary }>(
+    `/v1/platform/doctors/${encodeURIComponent(doctorId)}/services/${encodeURIComponent(serviceOfferingId)}/approve`,
+    clinicId ? { clinicId } : {},
+  );
 }
 
 

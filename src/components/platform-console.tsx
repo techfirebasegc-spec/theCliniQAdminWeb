@@ -38,6 +38,8 @@ import {
   resendClinicCreatedDoctorWelcome,
   resendDoctorWelcome,
   resendClinicWelcome,
+  createAdminDoctorService,
+  approveAdminDoctorService,
   retryClinicCreatedDoctorEmailOperation,
   resendOwnerInvitation,
   sendTransactionalEmailTest,
@@ -107,7 +109,81 @@ function CopyId({ label, value }: { label: string; value: string | null }) {
   return <span className="id-value"><code>{value}</code><Button type="button" variant="quiet" onClick={() => void navigator.clipboard.writeText(value)} aria-label={`Copy ${label}`}>Copy</Button></span>;
 }
 function DetailValue({ value }: { value: string | number | null | undefined }) { return value === null || value === undefined || value === "" ? <span className="muted">Not available</span> : <>{value}</>; }
-function ServiceTable({ items }: { items: PlatformClinic["services"] | PlatformDoctor["services"] }) { return items.length ? <div className="table-scroll"><table><thead><tr><th>Service</th><th>Offering</th><th>Version / price</th><th>Availability</th><th>Exposure</th></tr></thead><tbody>{items.map((service) => <tr key={service.id}><td><CopyId label="service offering ID" value={service.id} /></td><td><strong>{service.name}</strong><br /><StatusBadge value={service.status} /></td><td><DetailValue value={service.versionStatus} />{service.priceAmountMinor ? <small>{service.priceAmountMinor} {service.currency ?? ""}</small> : null}</td><td><StatusBadge value={service.availabilityStatus} /></td><td><StatusBadge value={service.exposureStatus} /></td></tr>)}</tbody></table></div> : <EmptyState title="No services recorded" detail="No service offerings are currently associated with this record." />; }
+function ServiceTable({
+  items,
+  onApproveService,
+  approvingId,
+}: {
+  items: PlatformClinic["services"] | PlatformDoctor["services"];
+  onApproveService?: (serviceId: string) => void;
+  approvingId?: string | null;
+}) {
+  return items.length ? (
+    <div className="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Service</th>
+            <th>Offering</th>
+            <th>Version / price</th>
+            <th>Availability</th>
+            <th>Exposure</th>
+            {onApproveService ? <th>Actions</th> : null}
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((service) => (
+            <tr key={service.id}>
+              <td>
+                <CopyId label="service offering ID" value={service.id} />
+              </td>
+              <td>
+                <strong>{service.name}</strong>
+                <br />
+                <StatusBadge value={service.status} />
+              </td>
+              <td>
+                <DetailValue value={service.versionStatus} />
+                {service.priceAmountMinor ? (
+                  <small>
+                    {service.priceAmountMinor} {service.currency ?? ""}
+                  </small>
+                ) : null}
+              </td>
+              <td>
+                <StatusBadge value={service.availabilityStatus} />
+              </td>
+              <td>
+                <StatusBadge value={service.exposureStatus} />
+              </td>
+              {onApproveService ? (
+                <td>
+                  {service.status !== "PUBLISHED" ? (
+                    <Button
+                      type="button"
+                      variant="quiet"
+                      disabled={approvingId === service.id}
+                      onClick={() => onApproveService(service.id)}
+                    >
+                      {approvingId === service.id ? "Approving…" : "Approve & Publish"}
+                    </Button>
+                  ) : (
+                    <span className="muted">Published</span>
+                  )}
+                </td>
+              ) : null}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  ) : (
+    <EmptyState
+      title="No services recorded"
+      detail="No service offerings are currently associated with this record."
+    />
+  );
+}
 function tone(status: string | null) {
   if (!status) return "neutral" as const;
   if (["ACTIVE", "ACCEPTED", "APPROVED", "VERIFIED", "PUBLISHED"].includes(status)) return "success" as const;
@@ -535,6 +611,14 @@ export function DoctorDetails({ doctorId }: { doctorId: string }) {
   );
   const [error, setError] = useState<string | null>(null);
   const [resendingWelcome, setResendingWelcome] = useState(false);
+  const [approvingServiceId, setApprovingServiceId] = useState<string | null>(null);
+  const [creatingService, setCreatingService] = useState(false);
+  const [showCreateService, setShowCreateService] = useState(false);
+  const [newServiceName, setNewServiceName] = useState("");
+  const [newServiceDescription, setNewServiceDescription] = useState("");
+  const [newServicePrice, setNewServicePrice] = useState("");
+  const [newServiceDuration, setNewServiceDuration] = useState("30");
+  const [newServicePublish, setNewServicePublish] = useState(true);
   const toast = useToast();
   const reload = useCallback(() => {
     setError(null);
@@ -624,7 +708,160 @@ export function DoctorDetails({ doctorId }: { doctorId: string }) {
         </div>
       </Card>
       <Card><div className="card-heading"><div><p className="eyebrow">Professional information</p><h2>Qualifications and relationships</h2></div></div>{item.qualifications.length ? <ul className="detail-list-compact">{item.qualifications.map((qualification) => <li key={`${qualification.credential}-${qualification.institution}`}>{qualification.credential} · {qualification.institution}{qualification.completionYear ? ` (${qualification.completionYear})` : ""}</li>)}</ul> : <p className="muted">Qualifications are not available.</p>}<p><strong>Languages:</strong> {item.languages.length ? item.languages.join(", ") : "Not available"}</p>{item.clinics.length ? <div className="record-links">{item.clinics.map((clinic) => <Link key={clinic.id} href={`/platform/clinics/${clinic.id}`}>{clinic.displayName} · {clinic.connectionStatus}</Link>)}</div> : null}</Card>
-      <Card><div className="card-heading"><div><p className="eyebrow">Services and readiness</p><h2>Service catalogue</h2></div></div><ServiceTable items={item.services} /></Card>
+      <Card>
+        <div className="card-heading">
+          <div>
+            <p className="eyebrow">Services and readiness</p>
+            <h2>Service catalogue</h2>
+          </div>
+          <div>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setShowCreateService(!showCreateService)}
+            >
+              {showCreateService ? "Cancel" : "+ Create Service for Doctor"}
+            </Button>
+          </div>
+        </div>
+
+        {showCreateService ? (
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!newServiceName.trim()) return;
+              setCreatingService(true);
+              setError(null);
+              try {
+                const priceMinor = newServicePrice
+                  ? Math.round(parseFloat(newServicePrice) * 100)
+                  : 0;
+                await createAdminDoctorService(doctorId, {
+                  name: newServiceName.trim(),
+                  description: newServiceDescription.trim() || undefined,
+                  priceAmountMinor: String(priceMinor),
+                  currency: "INR",
+                  slotDurationMinutes: parseInt(newServiceDuration, 10) || 30,
+                  publishExposure: newServicePublish,
+                });
+                toast.show("Service created successfully for doctor.");
+                setShowCreateService(false);
+                setNewServiceName("");
+                setNewServiceDescription("");
+                setNewServicePrice("");
+                reload();
+              } catch (cause) {
+                setError(errorMessage(cause));
+              } finally {
+                setCreatingService(false);
+              }
+            }}
+            style={{
+              marginBottom: "1.5rem",
+              padding: "1rem",
+              background: "var(--color-surface-subtle, #f9fafb)",
+              borderRadius: "8px",
+              border: "1px solid var(--color-border, #e5e7eb)",
+            }}
+          >
+            <h3 style={{ margin: "0 0 1rem 0", fontSize: "1rem" }}>
+              New Doctor Service Offering
+            </h3>
+            <div style={{ display: "grid", gap: "0.75rem", gridTemplateColumns: "1fr 1fr" }}>
+              <label style={{ gridColumn: "1 / -1" }}>
+                <span style={{ display: "block", fontSize: "0.85rem", fontWeight: 600 }}>
+                  Service Name *
+                </span>
+                <input
+                  type="text"
+                  required
+                  value={newServiceName}
+                  onChange={(e) => setNewServiceName(e.target.value)}
+                  placeholder="e.g. Cardiology Consultation"
+                  style={{ width: "100%", padding: "0.5rem", borderRadius: "4px", border: "1px solid #ccc" }}
+                />
+              </label>
+              <label style={{ gridColumn: "1 / -1" }}>
+                <span style={{ display: "block", fontSize: "0.85rem", fontWeight: 600 }}>
+                  Description
+                </span>
+                <textarea
+                  value={newServiceDescription}
+                  onChange={(e) => setNewServiceDescription(e.target.value)}
+                  placeholder="Service description and scope..."
+                  rows={2}
+                  style={{ width: "100%", padding: "0.5rem", borderRadius: "4px", border: "1px solid #ccc" }}
+                />
+              </label>
+              <label>
+                <span style={{ display: "block", fontSize: "0.85rem", fontWeight: 600 }}>
+                  Price (INR)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={newServicePrice}
+                  onChange={(e) => setNewServicePrice(e.target.value)}
+                  placeholder="e.g. 500"
+                  style={{ width: "100%", padding: "0.5rem", borderRadius: "4px", border: "1px solid #ccc" }}
+                />
+              </label>
+              <label>
+                <span style={{ display: "block", fontSize: "0.85rem", fontWeight: 600 }}>
+                  Duration (Minutes)
+                </span>
+                <input
+                  type="number"
+                  min="5"
+                  step="5"
+                  value={newServiceDuration}
+                  onChange={(e) => setNewServiceDuration(e.target.value)}
+                  style={{ width: "100%", padding: "0.5rem", borderRadius: "4px", border: "1px solid #ccc" }}
+                />
+              </label>
+              <label style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <input
+                  type="checkbox"
+                  checked={newServicePublish}
+                  onChange={(e) => setNewServicePublish(e.target.checked)}
+                />
+                <span style={{ fontSize: "0.85rem" }}>Publish immediately</span>
+              </label>
+            </div>
+            <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem" }}>
+              <Button type="submit" disabled={creatingService}>
+                {creatingService ? "Creating…" : "Create Service"}
+              </Button>
+              <Button
+                type="button"
+                variant="quiet"
+                onClick={() => setShowCreateService(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        ) : null}
+
+        <ServiceTable
+          items={item.services}
+          onApproveService={async (serviceId) => {
+            setApprovingServiceId(serviceId);
+            setError(null);
+            try {
+              await approveAdminDoctorService(doctorId, serviceId);
+              toast.show("Doctor service approved and published.");
+              reload();
+            } catch (cause) {
+              setError(errorMessage(cause));
+            } finally {
+              setApprovingServiceId(null);
+            }
+          }}
+          approvingId={approvingServiceId}
+        />
+      </Card>
       <VerificationReview doctorId={doctorId} onChanged={reload} />
       <DiscoveryControls
         subjectName={item.displayName ?? "this doctor"}
