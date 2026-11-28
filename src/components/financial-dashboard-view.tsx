@@ -253,9 +253,13 @@ export function FinancialDashboardView() {
           {/* Executive KPI Grid */}
           <div className={styles.kpiGrid}>
             <FinancialKpiCard
-              label="Gross Collections"
+              label="Net Collections"
               value={metrics.grossCollections?.formatted ?? formatMinor(metrics.grossCollectionsMinor ?? "0")}
-              subtext="Total funds collected across all channels"
+              subtext={
+                metrics.discountsMinor && metrics.discountsMinor !== "0"
+                  ? `Net of ${formatMinor(metrics.discountsMinor)} patient discounts`
+                  : "Total verified funds collected across channels"
+              }
               variant="default"
               icon={
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -266,7 +270,11 @@ export function FinancialDashboardView() {
             <FinancialKpiCard
               label="Platform Revenue"
               value={metrics.platformRevenue?.formatted ?? formatMinor(metrics.platformRevenueMinor ?? "0")}
-              subtext="Platform commissions & subscription earnings"
+              subtext={
+                metrics.platformFeeGstMinor && metrics.platformFeeGstMinor !== "0"
+                  ? `Net revenue (excl. ${formatMinor(metrics.platformFeeGstMinor)} GST liability)`
+                  : "Platform commissions, fees & subscriptions (excl. GST)"
+              }
               variant="revenue"
               icon={
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -280,7 +288,11 @@ export function FinancialDashboardView() {
                 metrics.providerPayablesOutstanding?.formatted ??
                 formatMinor(metrics.providerPayablesOutstandingMinor ?? "0")
               }
-              subtext="Unsettled liabilities owed to clinics & doctors"
+              subtext={
+                metrics.inProgressPayablesMinor && metrics.inProgressPayablesMinor !== "0"
+                  ? `Completed & settled-ready (${formatMinor(metrics.inProgressPayablesMinor)} in-progress escrow)`
+                  : "Completed paid consultations awaiting payout"
+              }
               variant="payable"
               icon={
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -302,6 +314,40 @@ export function FinancialDashboardView() {
               }
             />
           </div>
+
+          {metrics.revenueByCommercialModel && (
+            <div style={{ marginBottom: "20px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "16px" }}>
+              <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                  <span style={{ fontSize: "13px", fontWeight: "700", color: "#0f172a" }}>Legacy Provider Commission (Historical)</span>
+                  <span style={{ fontSize: "12px", fontWeight: "600", color: "#64748b" }}>
+                    {metrics.revenueByCommercialModel.providerCommission.count} txns
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "13px" }}>
+                  <div><span style={{ color: "#64748b" }}>Service Volume:</span> <strong>{formatMinor(metrics.revenueByCommercialModel.providerCommission.serviceAmountMinor)}</strong></div>
+                  <div><span style={{ color: "#64748b" }}>Platform Revenue:</span> <strong style={{ color: "#7c3aed" }}>{formatMinor(metrics.revenueByCommercialModel.providerCommission.platformRevenueMinor)}</strong></div>
+                  <div><span style={{ color: "#64748b" }}>Commission:</span> <strong>{formatMinor(metrics.revenueByCommercialModel.providerCommission.commissionMinor)}</strong></div>
+                  <div><span style={{ color: "#64748b" }}>Provider Payable:</span> <strong style={{ color: "#059669" }}>{formatMinor(metrics.revenueByCommercialModel.providerCommission.providerPayableMinor)}</strong></div>
+                </div>
+              </div>
+
+              <div style={{ background: "#ffffff", border: "1px solid #bfdbfe", borderRadius: "12px", padding: "16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                  <span style={{ fontSize: "13px", fontWeight: "700", color: "#1d4ed8" }}>Patient-Paid Platform Fee (Active)</span>
+                  <span style={{ fontSize: "12px", fontWeight: "600", color: "#2563eb" }}>
+                    {metrics.revenueByCommercialModel.patientPlatformFee.count} txns
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "13px" }}>
+                  <div><span style={{ color: "#64748b" }}>Service Volume:</span> <strong>{formatMinor(metrics.revenueByCommercialModel.patientPlatformFee.serviceAmountMinor)}</strong></div>
+                  <div><span style={{ color: "#64748b" }}>Platform Revenue:</span> <strong style={{ color: "#7c3aed" }}>{formatMinor(metrics.revenueByCommercialModel.patientPlatformFee.platformRevenueMinor)}</strong></div>
+                  <div><span style={{ color: "#64748b" }}>GST Collected:</span> <strong>{formatMinor(metrics.revenueByCommercialModel.patientPlatformFee.platformFeeGstMinor)}</strong></div>
+                  <div><span style={{ color: "#64748b" }}>Provider Payable (100%):</span> <strong style={{ color: "#059669" }}>{formatMinor(metrics.revenueByCommercialModel.patientPlatformFee.providerPayableMinor)}</strong></div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Analytics Visualizations Grid */}
           <div
@@ -333,23 +379,35 @@ export function FinancialDashboardView() {
               </div>
               <div className={styles.channelMetrics}>
                 <div className={styles.channelMetricRow}>
-                  <span className={styles.channelMetricLabel}>Completed Consultations</span>
+                  <span className={styles.channelMetricLabel}>Completed Payments</span>
                   <span className={styles.channelMetricVal}>
                     {metrics.channelBreakdown.onlineAppointments.count}
                   </span>
                 </div>
                 <div className={styles.channelMetricRow}>
-                  <span className={styles.channelMetricLabel}>Gross Digital Collections</span>
+                  <span className={styles.channelMetricLabel}>Patient Payments Collected</span>
                   <span className={styles.channelMetricVal}>
                     {formatMinor(metrics.channelBreakdown.onlineAppointments.grossMinor)}
                   </span>
                 </div>
                 <div className={styles.channelMetricRow}>
-                  <span className={styles.channelMetricLabel}>Platform Share (Commission)</span>
+                  <span className={styles.channelMetricLabel}>Platform Net Revenue (Excl. GST)</span>
                   <span className={styles.channelMetricVal} style={{ color: "#059669" }}>
-                    {formatMinor(metrics.channelBreakdown.onlineAppointments.commissionMinor)}
+                    {formatMinor(
+                      metrics.channelBreakdown.onlineAppointments.platformRevenueMinor ??
+                        metrics.channelBreakdown.onlineAppointments.commissionMinor,
+                    )}
                   </span>
                 </div>
+                {metrics.channelBreakdown.onlineAppointments.platformFeeGstMinor &&
+                  metrics.channelBreakdown.onlineAppointments.platformFeeGstMinor !== "0" && (
+                  <div className={styles.channelMetricRow}>
+                    <span className={styles.channelMetricLabel}>Platform Fee GST Liability</span>
+                    <span className={styles.channelMetricVal} style={{ color: "#64748b" }}>
+                      {formatMinor(metrics.channelBreakdown.onlineAppointments.platformFeeGstMinor)}
+                    </span>
+                  </div>
+                )}
                 <div className={styles.channelMetricRow}>
                   <span className={styles.channelMetricLabel}>Doctor / Clinic Payable</span>
                   <span className={styles.channelMetricVal} style={{ color: "#d97706" }}>
@@ -369,21 +427,32 @@ export function FinancialDashboardView() {
               </div>
               <div className={styles.channelMetrics}>
                 <div className={styles.channelMetricRow}>
-                  <span className={styles.channelMetricLabel}>Desk Invoices Issued</span>
+                  <span className={styles.channelMetricLabel}>Paid Invoices</span>
                   <span className={styles.channelMetricVal}>{metrics.channelBreakdown.offlineOpd.count}</span>
                 </div>
                 <div className={styles.channelMetricRow}>
-                  <span className={styles.channelMetricLabel}>Clinic Counter Inflow</span>
+                  <span className={styles.channelMetricLabel}>Clinic Counter Collected (Net of Discount)</span>
                   <span className={styles.channelMetricVal}>
                     {formatMinor(metrics.channelBreakdown.offlineOpd.grossMinor)}
                   </span>
                 </div>
                 <div className={styles.channelMetricRow}>
-                  <span className={styles.channelMetricLabel}>Platform Platform Fee</span>
+                  <span className={styles.channelMetricLabel}>Platform Net Revenue (Excl. GST)</span>
                   <span className={styles.channelMetricVal} style={{ color: "#059669" }}>
-                    {formatMinor(metrics.channelBreakdown.offlineOpd.commissionMinor)}
+                    {formatMinor(
+                      metrics.channelBreakdown.offlineOpd.platformRevenueMinor ??
+                        metrics.channelBreakdown.offlineOpd.commissionMinor,
+                    )}
                   </span>
                 </div>
+                {metrics.channelBreakdown.offlineOpd.gstMinor && metrics.channelBreakdown.offlineOpd.gstMinor !== "0" && (
+                  <div className={styles.channelMetricRow}>
+                    <span className={styles.channelMetricLabel}>Platform GST Liability</span>
+                    <span className={styles.channelMetricVal} style={{ color: "#64748b" }}>
+                      {formatMinor(metrics.channelBreakdown.offlineOpd.gstMinor)}
+                    </span>
+                  </div>
+                )}
                 <div className={styles.channelMetricRow}>
                   <span className={styles.channelMetricLabel}>Clinic Retained Net</span>
                   <span className={styles.channelMetricVal}>
@@ -452,6 +521,118 @@ export function FinancialDashboardView() {
               </div>
             </div>
           </div>
+
+          {/* Revenue by Commercial Model */}
+          {metrics.revenueByCommercialModel && (
+            <div className={styles.channelsGrid} style={{ marginTop: "18px" }}>
+              <div className={styles.channelCard}>
+                <div className={styles.channelHeader}>
+                  <h3 className={styles.channelTitle}>Model A: Provider Commission</h3>
+                  <span style={{ fontSize: "12px", color: "#64748b" }}>
+                    {metrics.revenueByCommercialModel.providerCommission.count} bookings
+                  </span>
+                </div>
+                <div className={styles.channelMetrics}>
+                  <div className={styles.channelMetricRow}>
+                    <span className={styles.channelMetricLabel}>Service Volume</span>
+                    <span className={styles.channelMetricVal}>
+                      {formatMinor(metrics.revenueByCommercialModel.providerCommission.serviceAmountMinor)}
+                    </span>
+                  </div>
+                  <div className={styles.channelMetricRow}>
+                    <span className={styles.channelMetricLabel}>Provider Commission</span>
+                    <span className={styles.channelMetricVal} style={{ color: "#059669" }}>
+                      {formatMinor(metrics.revenueByCommercialModel.providerCommission.commissionMinor)}
+                    </span>
+                  </div>
+                  <div className={styles.channelMetricRow}>
+                    <span className={styles.channelMetricLabel}>Provider Payable</span>
+                    <span className={styles.channelMetricVal}>
+                      {formatMinor(metrics.revenueByCommercialModel.providerCommission.providerPayableMinor)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className={styles.channelCard}>
+                <div className={styles.channelHeader}>
+                  <h3 className={styles.channelTitle}>Model B: Patient-Paid Platform Fee</h3>
+                  <span style={{ fontSize: "12px", color: "#64748b" }}>
+                    {metrics.revenueByCommercialModel.patientPlatformFee.count} bookings
+                  </span>
+                </div>
+                <div className={styles.channelMetrics}>
+                  <div className={styles.channelMetricRow}>
+                    <span className={styles.channelMetricLabel}>Service Volume (100% Provider Payable)</span>
+                    <span className={styles.channelMetricVal}>
+                      {formatMinor(metrics.revenueByCommercialModel.patientPlatformFee.serviceAmountMinor)}
+                    </span>
+                  </div>
+                  <div className={styles.channelMetricRow}>
+                    <span className={styles.channelMetricLabel}>Platform Net Revenue (excl. GST)</span>
+                    <span className={styles.channelMetricVal} style={{ color: "#059669" }}>
+                      {formatMinor(metrics.revenueByCommercialModel.patientPlatformFee.platformRevenueMinor)}
+                    </span>
+                  </div>
+                  <div className={styles.channelMetricRow}>
+                    <span className={styles.channelMetricLabel}>GST Liability (Separated)</span>
+                    <span className={styles.channelMetricVal} style={{ color: "#64748b" }}>
+                      {formatMinor(metrics.revenueByCommercialModel.patientPlatformFee.platformFeeGstMinor)}
+                    </span>
+                  </div>
+                  <div className={styles.channelMetricRow}>
+                    <span className={styles.channelMetricLabel}>Patient Total Collected</span>
+                    <span className={styles.channelMetricVal}>
+                      {formatMinor(metrics.revenueByCommercialModel.patientPlatformFee.patientPayableMinor)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Double-Entry Financial Reconciliation */}
+          {metrics.reconciliation && (
+            <div style={{ marginTop: "18px", marginBottom: "18px" }}>
+              <Card>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+                  <div>
+                    <h3 style={{ margin: "0 0 2px 0", color: "#173654", fontSize: "16px", fontWeight: 700 }}>
+                      Double-Entry Financial Reconciliation
+                    </h3>
+                    <p style={{ margin: 0, color: "#64748b", fontSize: 12 }}>
+                      Net Collections = Online Provider Payable + Offline Clinic Retained + Platform Net Revenue + GST Liability · Active Model: Patient-Paid Platform Fee (0% Commission)
+                    </p>
+                  </div>
+                  <span
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: "999px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      background: metrics.reconciliation.unallocatedDeltaMinor === "0" ? "#dcfce7" : "#fef2f2",
+                      color: metrics.reconciliation.unallocatedDeltaMinor === "0" ? "#166534" : "#991b1b",
+                    }}
+                  >
+                    {metrics.reconciliation.unallocatedDeltaMinor === "0" ? "Reconciled (₹0.00 Delta)" : `Delta: ${formatMinor(metrics.reconciliation.unallocatedDeltaMinor)}`}
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", fontSize: "13px" }}>
+                  <div><span style={{ color: "#64748b" }}>Gross Service Value:</span> <strong>{formatMinor(metrics.reconciliation.grossServiceValueMinor)}</strong></div>
+                  <div><span style={{ color: "#64748b" }}>OPD Discounts:</span> <strong>-{formatMinor(metrics.reconciliation.discountsMinor)}</strong></div>
+                  <div><span style={{ color: "#64748b" }}>Net Collections:</span> <strong>{formatMinor(metrics.reconciliation.netCollectionsMinor)}</strong></div>
+                  <div><span style={{ color: "#64748b" }}>Online Provider Payable:</span> <strong>{formatMinor(metrics.reconciliation.onlineProviderPayableMinor)}</strong></div>
+                  <div><span style={{ color: "#64748b" }}>Offline Clinic Retained:</span> <strong>{formatMinor(metrics.reconciliation.offlineClinicRetainedMinor)}</strong></div>
+                  <div><span style={{ color: "#64748b" }}>Platform Net Revenue:</span> <strong style={{ color: "#059669" }}>{formatMinor(metrics.reconciliation.platformNetRevenueMinor)}</strong></div>
+                  <div><span style={{ color: "#64748b" }}>GST Tax Liability:</span> <strong>{formatMinor(metrics.reconciliation.totalTaxLiabilityMinor)}</strong></div>
+                  <div><span style={{ color: "#64748b" }}>In-Progress Escrow:</span> <strong>{formatMinor(metrics.reconciliation.inProgressEscrowPayablesMinor)}</strong></div>
+                  {metrics.reconciliation.commissionAdjustmentsMinor && BigInt(metrics.reconciliation.commissionAdjustmentsMinor) > BigInt(0) && (
+                    <div><span style={{ color: "#64748b" }}>Commission Reversals:</span> <strong style={{ color: "#1d4ed8" }}>+{formatMinor(metrics.reconciliation.commissionAdjustmentsMinor)}</strong></div>
+                  )}
+                </div>
+              </Card>
+            </div>
+          )}
 
           {/* Quick Actions Card */}
           <Card>

@@ -23,6 +23,11 @@ import {
   type FinancialGovernanceOverview,
   type PaymentGatewayConfig,
   type TransactionChannel,
+  type PlatformCommercialModelConfig,
+  type CommercialModelPreviewItem,
+  getCommercialModelConfig,
+  updateCommercialModelConfig,
+  previewCommercialModelConfig,
 } from "../lib/platform-api/platform-admin";
 import { PlatformApiError } from "../lib/platform-api/client";
 import {
@@ -57,6 +62,7 @@ function loadErrorMessage(cause: unknown) {
 
 const TABS = [
   { id: "overview", label: "Financial Overview" },
+  { id: "model", label: "Revenue Model" },
   { id: "channels", label: "Transaction Channels" },
   { id: "rules", label: "Commercial Rules" },
   { id: "partners", label: "Partner Financials" },
@@ -119,8 +125,18 @@ export function CommercialRuleGovernance() {
   const [partnerFrequency, setPartnerFrequency] = useState<CommercialPartner["settlementFrequency"]>("MONTHLY");
   const [partnerMinPayout, setPartnerMinPayout] = useState("50000");
 
+  // Revenue Model Configuration
+  const [modelConfig, setModelConfig] = useState<PlatformCommercialModelConfig | null>(null);
+  const [selectedModelType, setSelectedModelType] = useState<"PATIENT_PLATFORM_FEE">("PATIENT_PLATFORM_FEE");
+  const [platformFeeINR, setPlatformFeeINR] = useState("20");
+  const [gstMode, setGstMode] = useState<"INCLUSIVE" | "EXCLUSIVE">("EXCLUSIVE");
+  const [gstRatePercent, setGstRatePercent] = useState("18");
+  const [savingModel, setSavingModel] = useState(false);
+  const [modelPreviewItems, setModelPreviewItems] = useState<CommercialModelPreviewItem[]>([]);
+
   // Simulator
   const [simChannel, setSimChannel] = useState<TransactionChannel>("ONLINE_OPD");
+  const [simModelType, setSimModelType] = useState<"ACTIVE" | "PATIENT_PLATFORM_FEE">("ACTIVE");
   const [simGross, setSimGross] = useState("1000");
   const [simDiscount, setSimDiscount] = useState("0");
   const [simServiceId, setSimServiceId] = useState("");
@@ -133,18 +149,26 @@ export function CommercialRuleGovernance() {
     setReady(false);
     setError(null);
     try {
-      const [rulesRes, overviewRes, previewRes, partnersRes, gatewaysRes] = await Promise.all([
+      const [rulesRes, overviewRes, previewRes, partnersRes, gatewaysRes, modelConfigRes] = await Promise.all([
         listCommercialRules(),
         getCommercialRulesOverview(),
         previewCommercialRules(),
         listCommercialPartners(),
         listPaymentGateways(),
+        getCommercialModelConfig().catch(() => null),
       ]);
       setRules(rulesRes.items);
       setOverview(overviewRes);
       setPreview(previewRes.items);
       setPartners(partnersRes.items);
       setGateways(gatewaysRes.items);
+      if (modelConfigRes?.config) {
+        setModelConfig(modelConfigRes.config);
+        setSelectedModelType("PATIENT_PLATFORM_FEE");
+        setPlatformFeeINR((Number(modelConfigRes.config.platformFeeMinor) / 100).toString());
+        setGstMode(modelConfigRes.config.gstMode);
+        setGstRatePercent((modelConfigRes.config.gstRateBps / 100).toString());
+      }
       setReady(true);
     } catch (cause) {
       setError(loadErrorMessage(cause));
@@ -152,6 +176,30 @@ export function CommercialRuleGovernance() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!ready) return;
+    let active = true;
+    const feeMinor = Math.round(parseFloat(platformFeeINR || "0") * 100).toString();
+    const rateBps = Math.round(parseFloat(gstRatePercent || "0") * 100);
+    if (!/^\d+$/.test(feeMinor) || !Number.isInteger(rateBps) || rateBps < 0 || rateBps > 10000) return;
+    void previewCommercialModelConfig({
+      modelType: selectedModelType,
+      platformFeeMinor: feeMinor,
+      gstMode,
+      gstRateBps: rateBps,
+      servicePricesMinor: ["20000", "50000", "100000"],
+    })
+      .then((res) => {
+        if (active) setModelPreviewItems(res.items || []);
+      })
+      .catch(() => {
+        // Keep previous preview on transient error
+      });
+    return () => {
+      active = false;
+    };
+  }, [ready, selectedModelType, platformFeeINR, gstMode, gstRatePercent]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -274,15 +322,38 @@ export function CommercialRuleGovernance() {
     }
   };
 
+  const handleSaveModelConfig = async () => {
+    if (!ready) return;
+    setSavingModel(true);
+    try {
+      const feeMinor = (Math.round(parseFloat(platformFeeINR || "0") * 100)).toString();
+      const rateBps = Math.round(parseFloat(gstRatePercent || "18") * 100);
+      const res = await updateCommercialModelConfig({
+        modelType: selectedModelType,
+        platformFeeMinor: feeMinor,
+        gstMode,
+        gstRateBps: rateBps,
+      });
+      setModelConfig(res.config);
+      show(`Commercial revenue model updated to ${selectedModelType === "PATIENT_PLATFORM_FEE" ? "Patient-Paid Platform Fee" : "Provider Commission"}.`);
+      void reload();
+    } catch {
+      setError("Failed to update commercial revenue model configuration.");
+    } finally {
+      setSavingModel(false);
+    }
+  };
+
   const handleRunSimulation = async () => {
     if (!ready) return;
     setSimulating(true);
     try {
-      const grossMinor = (parseFloat(simGross) || 0) * 100;
-      const discountMinor = (parseFloat(simDiscount) || 0) * 100;
+      const grossMinor = Math.round((parseFloat(simGross) || 0) * 100);
+      const discountMinor = Math.round((parseFloat(simDiscount) || 0) * 100);
 
       const result = await simulateCommercialRules({
         channel: simChannel,
+        ...(simModelType !== "ACTIVE" ? { modelType: simModelType } : {}),
         grossAmountMinor: grossMinor.toString(),
         discountAmountMinor: discountMinor.toString(),
         serviceOfferingId: simServiceId || undefined,
@@ -420,6 +491,132 @@ export function CommercialRuleGovernance() {
                       </div>
                     </div>
                   ))}
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {/* TAB 1.5: REVENUE MODEL CONFIGURATION */}
+          {activeTab === "model" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+              <Card>
+                <div style={{ marginBottom: "20px" }}>
+                  <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "700" }}>Active Commercial Revenue Model</h3>
+                  <p style={{ margin: "4px 0 0 0", color: "#64748b", fontSize: "13px" }}>
+                    Configure the platform&apos;s authoritative revenue mechanism. Switching models applies to new eligible transactions only; historical transaction snapshots remain strictly immutable.
+                  </p>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "20px", marginBottom: "24px" }}>
+                  <div
+                    style={{
+                      border: "2px solid #2563eb",
+                      borderRadius: "10px",
+                      padding: "18px",
+                      backgroundColor: "#eff6ff",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <strong style={{ fontSize: "15px", color: "#0f172a" }}>Patient-Paid Platform Fee (Active Standard)</strong>
+                      <Badge tone="success">Active</Badge>
+                    </div>
+                    <p style={{ margin: "0 0 10px 0", fontSize: "13px", color: "#475569" }}>
+                      Provider receives 100% of their eligible service price (0% commission). Patient pays the service price plus an explicit platform fee and applicable GST. The legacy Provider Commission model is permanently retired.
+                    </p>
+                    <div style={{ fontSize: "12px", color: "#64748b", backgroundColor: "#fff", padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
+                      Example: ₹1,000 service with ₹20 platform fee + 18% GST (₹3.60) → Patient pays ₹1,023.60, Provider receives ₹1,000, Platform earns ₹20, GST liability ₹3.60.
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "20px", display: "grid", gridTemplateColumns: selectedModelType === "PATIENT_PLATFORM_FEE" ? "repeat(3, 1fr)" : "repeat(2, 1fr)", gap: "16px", marginBottom: "20px" }}>
+                  {selectedModelType === "PATIENT_PLATFORM_FEE" && (
+                    <div>
+                      <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "6px", color: "#334155" }}>
+                        Platform Fee (₹ INR)
+                      </label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={platformFeeINR}
+                        onChange={(e) => setPlatformFeeINR(e.target.value)}
+                        placeholder="e.g. 20, 30"
+                      />
+                      <span style={{ fontSize: "11px", color: "#64748b" }}>Paise stored as integer minor units ({Math.round(parseFloat(platformFeeINR || "0") * 100)} paise).</span>
+                    </div>
+                  )}
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "6px", color: "#334155" }}>
+                      GST Treatment
+                    </label>
+                    <Select
+                      value={gstMode}
+                      onChange={(e) => setGstMode(e.target.value as "INCLUSIVE" | "EXCLUSIVE")}
+                    >
+                      <option value="EXCLUSIVE">Exclusive (GST added on top of fee)</option>
+                      <option value="INCLUSIVE">Inclusive (GST included within fee)</option>
+                    </Select>
+                    <span style={{ fontSize: "11px", color: "#64748b" }}>Applies to the platform facilitation fee / commission.</span>
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "6px", color: "#334155" }}>
+                      GST Rate (%)
+                    </label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max="28"
+                      step="0.5"
+                      value={gstRatePercent}
+                      onChange={(e) => setGstRatePercent(e.target.value)}
+                      placeholder="18"
+                    />
+                    <span style={{ fontSize: "11px", color: "#64748b" }}>Configured tax rate in basis points ({Math.round(parseFloat(gstRatePercent || "0") * 100)} bps).</span>
+                  </div>
+                </div>
+
+                {/* Real-time Calculation Simulation Table */}
+                <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "20px", marginBottom: "20px" }}>
+                  <h4 style={{ margin: "0 0 12px 0", fontSize: "15px", fontWeight: "700", color: "#1e293b" }}>Financial Calculation Breakdown Preview</h4>
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                      <thead>
+                        <tr style={{ backgroundColor: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>
+                          <th style={{ padding: "10px", textAlign: "left", color: "#475569" }}>Service Price</th>
+                          <th style={{ padding: "10px", textAlign: "right", color: "#475569" }}>Platform Fee</th>
+                          <th style={{ padding: "10px", textAlign: "right", color: "#475569" }}>GST ({gstRatePercent}%)</th>
+                          <th style={{ padding: "10px", textAlign: "right", color: "#475569" }}>Patient Total</th>
+                          <th style={{ padding: "10px", textAlign: "right", color: "#475569" }}>Provider Payable</th>
+                          <th style={{ padding: "10px", textAlign: "right", color: "#475569" }}>Platform Revenue</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {modelPreviewItems.map((item) => (
+                          <tr key={item.servicePriceMinor} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                            <td style={{ padding: "10px", fontWeight: "600", color: "#0f172a" }}>₹{(Number(item.servicePriceMinor) / 100).toFixed(2)}</td>
+                            <td style={{ padding: "10px", textAlign: "right", color: "#475569" }}>₹{(Number(item.platformFeeMinor) / 100).toFixed(2)}</td>
+                            <td style={{ padding: "10px", textAlign: "right", color: "#475569" }}>₹{(Number(item.platformFeeGstMinor) / 100).toFixed(2)}</td>
+                            <td style={{ padding: "10px", textAlign: "right", fontWeight: "700", color: "#2563eb" }}>₹{(Number(item.patientPayableMinor) / 100).toFixed(2)}</td>
+                            <td style={{ padding: "10px", textAlign: "right", fontWeight: "600", color: "#059669" }}>₹{(Number(item.providerPayableMinor) / 100).toFixed(2)}</td>
+                            <td style={{ padding: "10px", textAlign: "right", fontWeight: "600", color: "#7c3aed" }}>₹{(Number(item.platformNetRevenueMinor) / 100).toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px" }}>
+                  <Button
+                    variant="primary"
+                    disabled={savingModel}
+                    onClick={() => void handleSaveModelConfig()}
+                  >
+                    {savingModel ? "Saving Configuration..." : "Save Active Revenue Model"}
+                  </Button>
                 </div>
               </Card>
             </div>
@@ -683,23 +880,27 @@ export function CommercialRuleGovernance() {
                   <div className={styles.channelDetails}>
                     <div className={styles.detailRow}>
                       <span>Standard GST Rate:</span>
-                      <strong style={{ fontSize: "18px", color: "#0f172a" }}>18.00% (1800 bps)</strong>
+                      <strong style={{ fontSize: "18px", color: "#0f172a" }}>
+                        {modelConfig ? `${(modelConfig.gstRateBps / 100).toFixed(2)}% (${modelConfig.gstRateBps} bps)` : "18.00% (1800 bps)"}
+                      </strong>
                     </div>
                     <div className={styles.detailRow}>
                       <span>Tax Component Split:</span>
-                      <span className={styles.detailValue}>CGST 9.00% + SGST 9.00% (Intra-state) / IGST 18.00%</span>
+                      <span className={styles.detailValue}>CGST / SGST (Intra-state) or IGST (Inter-state)</span>
                     </div>
                     <div className={styles.detailRow}>
                       <span>HSN / SAC Code:</span>
-                      <span className={styles.detailValue}>998311 (Healthcare support services)</span>
+                      <span className={styles.detailValue}>{modelConfig?.hsnSacCode || "998311"} (Healthcare support services)</span>
                     </div>
                     <div className={styles.detailRow}>
                       <span>GST Registration (GSTIN):</span>
-                      <span className={styles.detailValue}>27AABCU9603R1ZM</span>
+                      <span className={styles.detailValue}>{modelConfig?.registrationNumber || "27AABCU9603R1ZM"}</span>
                     </div>
                     <div className={styles.detailRow}>
                       <span>Tax Quoting Basis:</span>
-                      <span className={styles.detailValue}>Exclusive of Platform Fee</span>
+                      <span className={styles.detailValue}>
+                        {modelConfig?.gstMode === "INCLUSIVE" ? "Inclusive within Platform Fee" : "Exclusive (added on top of Platform Fee)"}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -716,7 +917,7 @@ export function CommercialRuleGovernance() {
                     </div>
                     <div className={styles.detailRow}>
                       <span>General Ledger Account:</span>
-                      <span className={styles.detailValue}>2110 (GST Output Liability)</span>
+                      <span className={styles.detailValue}>2030 (GST Output Liability)</span>
                     </div>
                     <div className={styles.detailRow}>
                       <span>Tax Exemption Code:</span>
@@ -828,8 +1029,8 @@ export function CommercialRuleGovernance() {
                       <tr key={r.id}>
                         <td><strong>{r.name || "Razorpay Fee Policy"}</strong></td>
                         <td>{r.policy.percentageBasisPoints ? `${Number(r.policy.percentageBasisPoints) / 100}%` : "2.00%"}</td>
-                        <td>₹0.00</td>
-                        <td>18.00%</td>
+                        <td>{r.policy.fixedAmountMinor ? `₹${(Number(r.policy.fixedAmountMinor) / 100).toFixed(2)}` : "₹0.00"}</td>
+                        <td>{r.policy.gstRateBps !== undefined ? `${(Number(r.policy.gstRateBps) / 100).toFixed(2)}%` : "18.00%"}</td>
                         <td><Badge tone="neutral">{r.policy.feeBearer || "THECLINIQ"}</Badge></td>
                         <td><StatusBadge value={r.status} /></td>
                       </tr>
@@ -882,6 +1083,14 @@ export function CommercialRuleGovernance() {
                   </div>
 
                   <div className={styles.formGroup}>
+                    <label>Commercial Revenue Model</label>
+                    <Select value={simModelType} onChange={e => setSimModelType(e.target.value as "ACTIVE" | "PATIENT_PLATFORM_FEE")}>
+                      <option value="ACTIVE">Active Platform Model (Patient-Paid Platform Fee)</option>
+                      <option value="PATIENT_PLATFORM_FEE">Patient-Paid Platform Fee</option>
+                    </Select>
+                  </div>
+
+                  <div className={styles.formGroup}>
                     <label>Service Offering (Optional)</label>
                     <Select value={simServiceId} onChange={e => setSimServiceId(e.target.value)}>
                       <option value="">Default / None</option>
@@ -901,27 +1110,66 @@ export function CommercialRuleGovernance() {
 
               {simResult ? (
                 <div className={styles.waterfallCard}>
-                  <h4 style={{ margin: "0 0 16px 0", fontSize: "16px", fontWeight: "700" }}>Calculation Waterfall & Allocation Breakdown</h4>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                    <h4 style={{ margin: 0, fontSize: "16px", fontWeight: "700" }}>Calculation Waterfall & Allocation Breakdown</h4>
+                    <Badge tone={simResult.commercialModel === "PATIENT_PLATFORM_FEE" ? "success" : "neutral"}>
+                      {simResult.commercialModel === "PATIENT_PLATFORM_FEE" ? "Model B: Patient-Paid Platform Fee" : "Model A: Provider Commission"}
+                    </Badge>
+                  </div>
                   <div className={styles.waterfallRow}>
-                    <span>Gross Patient Transaction:</span>
+                    <span>Gross Consultation Charge:</span>
                     <strong>₹{(Number(simResult.grossAmountMinor) / 100).toFixed(2)}</strong>
                   </div>
                   <div className={styles.waterfallRow}>
                     <span>Patient Discount:</span>
                     <span style={{ color: "#dc2626" }}>-₹{(Number(simResult.discountAmountMinor) / 100).toFixed(2)}</span>
                   </div>
-                  <div className={styles.waterfallRow} style={{ background: "#f8fafc", padding: "8px 12px", borderRadius: "6px" }}>
-                    <span>Net Paid by Patient:</span>
-                    <strong>₹{(Number(simResult.netPayableMinor) / 100).toFixed(2)}</strong>
-                  </div>
                   <div className={styles.waterfallRow}>
-                    <span>Platform Commission ({simResult.commissionRateBps / 100}%):</span>
-                    <span style={{ color: "#d97706" }}>-₹{(Number(simResult.platformCommissionMinor) / 100).toFixed(2)}</span>
+                    <span>Eligible Service Value:</span>
+                    <strong>₹{(Number(simResult.eligibleServiceAmountMinor ?? simResult.grossAmountMinor) / 100).toFixed(2)}</strong>
                   </div>
-                  <div className={styles.waterfallRow}>
-                    <span>GST on Platform Commission ({simResult.taxRateBps / 100}%):</span>
-                    <span style={{ color: "#d97706" }}>-₹{(Number(simResult.taxAmountMinor) / 100).toFixed(2)}</span>
-                  </div>
+                  {simResult.commercialModel === "PATIENT_PLATFORM_FEE" ? (
+                    <>
+                      <div className={styles.waterfallRow}>
+                        <span>(+) Platform Fee (Net, Excl. GST):</span>
+                        <span style={{ color: "#7c3aed" }}>+₹{(Number(simResult.platformFeeNetMinor ?? simResult.platformNetRevenueMinor ?? "0") / 100).toFixed(2)}</span>
+                      </div>
+                      <div className={styles.waterfallRow}>
+                        <span>(+) GST on Platform Fee ({simResult.taxRateBps / 100}% {simResult.gstMode ?? "EXCLUSIVE"}):</span>
+                        <span style={{ color: "#64748b" }}>+₹{(Number(simResult.platformFeeGstMinor ?? simResult.taxAmountMinor) / 100).toFixed(2)}</span>
+                      </div>
+                      <div className={styles.waterfallRow} style={{ background: "#f8fafc", padding: "8px 12px", borderRadius: "6px" }}>
+                        <span>Total Paid by Patient:</span>
+                        <strong>₹{(Number(simResult.patientPayableMinor ?? simResult.netPayableMinor) / 100).toFixed(2)}</strong>
+                      </div>
+                      <div className={styles.waterfallRow}>
+                        <span>Provider Commission:</span>
+                        <span style={{ color: "#059669" }}>₹0.00 (Waived under Patient-Paid Fee)</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className={styles.waterfallRow} style={{ background: "#f8fafc", padding: "8px 12px", borderRadius: "6px" }}>
+                        <span>Total Paid by Patient:</span>
+                        <strong>₹{(Number(simResult.patientPayableMinor ?? simResult.netPayableMinor) / 100).toFixed(2)}</strong>
+                      </div>
+                      <div className={styles.waterfallRow}>
+                        <span>(-) Platform Commission ({simResult.commissionRateBps / 100}%):</span>
+                        <span style={{ color: "#d97706" }}>-₹{(Number(simResult.platformCommissionMinor) / 100).toFixed(2)}</span>
+                      </div>
+                      {Number(simResult.taxDeductedFromSettlementMinor ?? "0") > 0 ? (
+                        <div className={styles.waterfallRow}>
+                          <span>(-) GST on Platform Commission ({simResult.taxRateBps / 100}% Exclusive):</span>
+                          <span style={{ color: "#d97706" }}>-₹{(Number(simResult.taxDeductedFromSettlementMinor) / 100).toFixed(2)}</span>
+                        </div>
+                      ) : Number(simResult.taxAmountMinor) > 0 ? (
+                        <div className={styles.waterfallRow}>
+                          <span>GST on Platform Facilitation ({simResult.taxRateBps / 100}% {simResult.gstMode ?? "EXCLUSIVE"}):</span>
+                          <span style={{ color: "#64748b" }}>₹{(Number(simResult.taxAmountMinor) / 100).toFixed(2)} (not deducted from online payout)</span>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
                   {Number(simResult.partnerShareMinor) > 0 && (
                     <div className={styles.waterfallRow}>
                       <span>Partner Revenue Share:</span>
@@ -929,14 +1177,21 @@ export function CommercialRuleGovernance() {
                     </div>
                   )}
                   <div className={styles.waterfallRow}>
+                    <span>Platform Net Revenue (Excl. GST):</span>
+                    <strong style={{ color: "#7c3aed" }}>₹{(Number(simResult.platformNetRevenueMinor ?? simResult.platformCommissionMinor) / 100).toFixed(2)}</strong>
+                  </div>
+                  <div className={styles.waterfallRow}>
                     <span>Estimated Net Provider Settlement:</span>
-                    <strong>₹{(Number(simResult.estimatedNetSettlementMinor) / 100).toFixed(2)}</strong>
+                    <strong style={{ color: "#059669" }}>₹{(Number(simResult.estimatedNetSettlementMinor) / 100).toFixed(2)}</strong>
                   </div>
 
                   <div className={styles.traceBox}>
                     <strong>Resolution Engine Trace:</strong>
-                    <div>Matched Rule Version: <code>{simResult.resolutionTrace.matchedVersionId}</code></div>
+                    <div>Matched Rule / Config: <code>{simResult.resolutionTrace.matchedVersionId || simResult.resolutionTrace.matchedRuleId || "Active Model Config"}</code></div>
                     <div>Precedence Level: <strong>Level {simResult.resolutionTrace.precedenceLevel}</strong> ({simResult.resolutionTrace.precedenceDescription})</div>
+                    {simResult.reconciliationCheck && (
+                      <div>Reconciliation: <strong>{simResult.reconciliationCheck.balancesToExactPaisa ? "Balanced to exact paisa" : "Unbalanced"}</strong></div>
+                    )}
                   </div>
                 </div>
               ) : null}

@@ -311,6 +311,11 @@ export function FinancialSubscriptionsView() {
                       <span className={sub.subscriberType === "CLINIC" ? styles.badgeInflow : styles.badgeOutflow}>
                         {sub.subscriberType === "CLINIC" ? "Clinic" : "Doctor"}
                       </span>
+                      {sub.isTrial || sub.activationSource === "FREE_TRIAL" ? (
+                        <div style={{ fontSize: "10px", fontWeight: 700, color: "#0369a1", marginTop: "2px" }}>FREE TRIAL</div>
+                      ) : sub.activationSource === "COUPON_100" ? (
+                        <div style={{ fontSize: "10px", fontWeight: 700, color: "#059669", marginTop: "2px" }}>100% COUPON</div>
+                      ) : null}
                     </td>
                     <td>
                       <div>
@@ -326,11 +331,20 @@ export function FinancialSubscriptionsView() {
                     <td>
                       <div>
                         <strong style={{ fontVariantNumeric: "tabular-nums" }}>
-                          {formatMoney(totalMinor, sub.currency)}
+                          {sub.isTrial || sub.activationSource === "FREE_TRIAL"
+                            ? "Free Trial (INR 0.00)"
+                            : formatMoney(totalMinor, sub.currency)}
                         </strong>
-                        <div style={{ fontSize: "11px", color: "#64788b" }}>
-                          Base: {formatMoney(baseMinor, sub.currency)} + GST: {formatMoney(gstMinor, sub.currency)}
-                        </div>
+                        {!sub.isTrial && sub.activationSource !== "FREE_TRIAL" ? (
+                          <div style={{ fontSize: "11px", color: "#64788b" }}>
+                            Base: {formatMoney(baseMinor, sub.currency)} + GST: {formatMoney(gstMinor, sub.currency)}
+                            {sub.discountAmountMinor && Number(sub.discountAmountMinor) > 0 ? (
+                              <div style={{ color: "#059669" }}>
+                                Discount{sub.couponCode ? ` (${sub.couponCode})` : ""}: -{formatMoney(sub.discountAmountMinor, sub.currency)}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </div>
                     </td>
                     <td>
@@ -432,6 +446,11 @@ export function FinancialSubscriptionsView() {
                     </div>
                     <div style={{ fontSize: "11px", color: "#64788b" }}>
                       Base: {formatMoney(detailData.baseAmountMinor ?? detailData.amountMinor, detailData.currency)} + GST: {formatMoney(detailData.gstAmountMinor ?? "0", detailData.currency)}
+                      {detailData.discountAmountMinor && Number(detailData.discountAmountMinor) > 0 ? (
+                        <div style={{ color: "#059669" }}>
+                          Coupon{detailData.couponCode ? ` (${detailData.couponCode})` : ""}: -{formatMoney(detailData.discountAmountMinor, detailData.currency)}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </div>

@@ -144,7 +144,7 @@ export function FinancialTransactionsView() {
             <option value="ONLINE_APPOINTMENT">Online Appointments</option>
             <option value="OFFLINE_OPD">Offline OPD Consultations</option>
             <option value="SUBSCRIPTION">Subscriptions</option>
-            <option value="MANUAL_PAYOUT">Payouts / Settlements</option>
+            <option value="PAYOUT">Payouts / Settlements</option>
             <option value="REFUND">Refunds</option>
           </Select>
         </FilterGroup>
@@ -222,10 +222,11 @@ export function FinancialTransactionsView() {
                 <th>Date & Time</th>
                 <th>Reference #</th>
                 <th>Channel</th>
+                <th>Commercial Model</th>
                 <th>Flow</th>
-                <th>Amount</th>
-                <th>Method</th>
-                <th>Beneficiary / Counterparty</th>
+                <th>Patient Paid</th>
+                <th>Fee / GST</th>
+                <th>Provider Payable</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -238,6 +239,19 @@ export function FinancialTransactionsView() {
                   </td>
                   <td>{channelLabel(item.channel)}</td>
                   <td>
+                    {item.commercialModel === "PATIENT_PLATFORM_FEE" ? (
+                      <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe" }}>
+                        Platform Fee
+                      </span>
+                    ) : item.commercialModel === "PROVIDER_COMMISSION" ? (
+                      <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#f8fafc", color: "#475569", border: "1px solid #cbd5e1" }}>
+                        Legacy Commission
+                      </span>
+                    ) : (
+                      <span style={{ color: "#94a3b8", fontSize: 12 }}>—</span>
+                    )}
+                  </td>
+                  <td>
                     <span
                       className={
                         item.direction === "INFLOW"
@@ -249,21 +263,29 @@ export function FinancialTransactionsView() {
                     </span>
                   </td>
                   <td style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
-                    {formatMoney(item.amountMinor, item.currency)}
-                  </td>
-                  <td>{item.paymentMethod || "—"}</td>
-                  <td>
-                    {item.patientName && (
-                      <div>
-                        <small style={{ color: "#64788b" }}>Patient: </small>
-                        <strong>{item.patientName}</strong>
+                    {formatMoney(item.patientPayableMinor ?? item.amountMinor, item.currency)}
+                    {item.serviceAmountMinor && item.commercialModel === "PATIENT_PLATFORM_FEE" && (
+                      <div style={{ fontSize: 11, fontWeight: 500, color: "#64748b" }}>
+                        Service: {formatMoney(item.serviceAmountMinor, item.currency)}
                       </div>
                     )}
-                    {item.doctorName && (
+                  </td>
+                  <td style={{ fontVariantNumeric: "tabular-nums", fontSize: 12 }}>
+                    {item.channel === "PAYOUT" || item.channel === "MANUAL_PAYOUT" || item.channel === "REFUND" ? (
+                      <span>{formatMoney(item.platformFeeMinor ?? "0", item.currency)}</span>
+                    ) : (
                       <div>
-                        <small style={{ color: "#64788b" }}>Doctor: </small>
-                        {item.doctorName}
+                        <div>Rev: <strong>{formatMoney(item.platformRevenueMinor ?? item.platformFeeMinor ?? "0", item.currency)}</strong></div>
+                        {Number(item.platformFeeGstMinor ?? "0") > 0 && (
+                          <div style={{ color: "#64748b" }}>GST: {formatMoney(item.platformFeeGstMinor ?? "0", item.currency)}</div>
+                        )}
                       </div>
+                    )}
+                  </td>
+                  <td style={{ fontVariantNumeric: "tabular-nums" }}>
+                    <div style={{ fontWeight: 600 }}>{formatMoney(item.providerAmountMinor ?? "0", item.currency)}</div>
+                    {item.doctorName && (
+                      <small style={{ color: "#64788b" }}>{item.doctorName}</small>
                     )}
                     {!item.patientName && !item.doctorName && (item.counterparty || item.clinicId || "—")}
                   </td>

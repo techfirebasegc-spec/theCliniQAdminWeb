@@ -22,16 +22,20 @@ import {
   type SubscriptionPlanEntitlement,
   type SubscriptionPlanVersion,
   type SubscriptionProductKey,
+  type SubscriptionSubjectKind,
   type SubscriptionSubjectEligibility,
   updateSubscriptionPlan,
 } from "../lib/platform-api/platform-admin";
 import { PlatformApiError } from "../lib/platform-api/client";
 import { Alert, Button, Card, ConfirmationDialog, DataTable, EmptyState, ErrorState, Input, LoadingState, Modal, PageHeader, Select, StatusBadge, Tabs, useToast } from "./ui";
+import { SubscriptionAccessGovernance } from "./subscription-access-governance";
+import { SubscriptionCouponManagement } from "./subscription-coupon-management";
 import { SubscriptionDefaultConfigurations } from "./subscription-default-configurations";
 import { SubscriptionSubjectEligibilityView } from "./subscription-subject-eligibility";
+import { SubscriptionTrialSettings } from "./subscription-trial-settings";
 import styles from "./subscription-plan-management.module.css";
 
-type Section = "plans" | "defaults" | "eligibility";
+type Section = "plans" | "trials" | "coupons" | "grandfathering" | "defaults" | "eligibility";
 type EntitlementDraft = { key: string; enabled: boolean; value: string };
 type Confirmation = {
   kind: "activate-plan" | "publish-version" | "retire-and-publish" | "retire-version" | "retire-plan";
@@ -71,6 +75,7 @@ export function SubscriptionPlanManagement() {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [productFilter, setProductFilter] = useState<SubscriptionProductKey | "ALL">("ALL");
+  const [subjectKindFilter, setSubjectKindFilter] = useState<SubscriptionSubjectKind | "ALL">("ALL");
   const [statusFilter, setStatusFilter] = useState<SubscriptionPlan["status"] | "ALL">("ALL");
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
@@ -114,12 +119,12 @@ export function SubscriptionPlanManagement() {
     return () => window.clearTimeout(timer);
   }, [reload]);
 
-  const createPlan = async (productKey: SubscriptionProductKey, code: string, displayName: string) => {
+  const createPlan = async (productKey: SubscriptionProductKey, subjectKind: SubscriptionSubjectKind, code: string, displayName: string) => {
     if (!ready) return;
     setWorking("create-plan");
     setError(null);
     try {
-      await createSubscriptionPlan(productKey, { code: code.trim(), displayName: displayName.trim() });
+      await createSubscriptionPlan(productKey, { code: code.trim(), displayName: displayName.trim(), subjectKind });
       setCreateOpen(false);
       show("Plan created as a draft. Add and publish a version before activating.");
       await reload();
@@ -173,6 +178,7 @@ export function SubscriptionPlanManagement() {
   const visiblePlans = plans.filter(
     (plan) =>
       (productFilter === "ALL" || products.find((product) => product.id === plan.productId)?.key === productFilter) &&
+      (subjectKindFilter === "ALL" || (plan.subjectKind ?? "CLINIC") === subjectKindFilter) &&
       (statusFilter === "ALL" || plan.status === statusFilter),
   );
   const controlsDisabled = !ready || loading || working !== null;
@@ -182,7 +188,7 @@ export function SubscriptionPlanManagement() {
       <PageHeader
         eyebrow="Subscription governance"
         title="Subscription plans &amp; catalogue"
-        description="Versioned commercial catalogue. Plan status controls catalogue offering state; version status governs immutable pricing and entitlements."
+        description="Separate Clinic and Doctor plans, trial governance, server-validated coupons, and access enforcement."
         action={
           section === "plans" ? (
             <Button onClick={() => setCreateOpen(true)} disabled={controlsDisabled}>
@@ -196,12 +202,21 @@ export function SubscriptionPlanManagement() {
         onChange={(value) => setSection(value as Section)}
         items={[
           { id: "plans", label: "Products & plans" },
+          { id: "trials", label: "Trial settings" },
+          { id: "coupons", label: "Coupons" },
+          { id: "grandfathering", label: "Access & grandfathering" },
           { id: "defaults", label: "Default plan configuration" },
           { id: "eligibility", label: "Subject eligibility" },
         ]}
       />
 
-      {section === "defaults" ? (
+      {section === "trials" ? (
+        <SubscriptionTrialSettings products={products} plans={plans} planVersionsMap={planVersionsMap} onToast={show} />
+      ) : section === "coupons" ? (
+        <SubscriptionCouponManagement plans={plans} onToast={show} />
+      ) : section === "grandfathering" ? (
+        <SubscriptionAccessGovernance onToast={show} />
+      ) : section === "defaults" ? (
         <SubscriptionDefaultConfigurations />
       ) : section === "eligibility" ? (
         <SubscriptionSubjectEligibilityView />
@@ -265,6 +280,11 @@ export function SubscriptionPlanManagement() {
                       <option key={product.id} value={product.key}>{product.displayName}</option>
                     ))}
                   </Select>
+                  <Select aria-label="Filter plans by audience" value={subjectKindFilter} onChange={(event) => setSubjectKindFilter(event.target.value as SubscriptionSubjectKind | "ALL")}>
+                    <option value="ALL">All audiences</option>
+                    <option value="CLINIC">Clinics</option>
+                    <option value="DOCTOR">Individual Doctors</option>
+                  </Select>
                   <Select aria-label="Filter plans by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as SubscriptionPlan["status"] | "ALL")}>
                     <option value="ALL">All plan statuses</option>
                     <option value="DRAFT">Draft</option>
@@ -278,6 +298,7 @@ export function SubscriptionPlanManagement() {
                     <thead>
                       <tr>
                         <th>Plan &amp; Code</th>
+                        <th>Audience</th>
                         <th>Product</th>
                         <th>Plan status</th>
                         <th>Published live version</th>
@@ -292,6 +313,7 @@ export function SubscriptionPlanManagement() {
                         const published = allVersions.find((v) => v.status === "PUBLISHED");
                         const draft = allVersions.find((v) => v.status === "DRAFT");
                         const prod = products.find((p) => p.id === plan.productId);
+                        const audience = plan.subjectKind ?? "CLINIC";
 
                         return (
                           <tr key={plan.id}>
@@ -299,6 +321,9 @@ export function SubscriptionPlanManagement() {
                               <strong>{plan.displayName}</strong>
                               <br />
                               <small><code>{plan.code}</code></small>
+                            </td>
+                            <td>
+                              <StatusBadge value={audience} />
                             </td>
                             <td>{prod?.displayName ?? "Product unavailable"}</td>
                             <td>
@@ -385,31 +410,55 @@ function PlanCreateModal({
   products: SubscriptionCatalogueProduct[];
   busy: boolean;
   onClose: () => void;
-  onCreate: (product: SubscriptionProductKey, code: string, name: string) => Promise<void>;
+  onCreate: (product: SubscriptionProductKey, subjectKind: SubscriptionSubjectKind, code: string, name: string) => Promise<void>;
 }) {
   const [product, setProduct] = useState<SubscriptionProductKey>("OFFLINE_OPD");
+  const [subjectKind, setSubjectKind] = useState<SubscriptionSubjectKind>("CLINIC");
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [validation, setValidation] = useState<string | null>(null);
 
   const submit = async () => {
+    if (subjectKind === "DOCTOR" && product === "IPD_MANAGEMENT") {
+      setValidation("Individual Doctors cannot subscribe to IPD Management. Select Clinic audience or Offline OPD product.");
+      return;
+    }
     if (!/^[A-Z][A-Z0-9_]{1,63}$/.test(code.trim().toUpperCase()) || !name.trim()) {
       setValidation("Use a plan code beginning with a letter, containing only uppercase letters, numbers, or underscores, and enter a plan name.");
       return;
     }
     setValidation(null);
-    await onCreate(product, code.toUpperCase(), name);
+    await onCreate(product, subjectKind, code.toUpperCase(), name);
   };
 
   return (
     <Modal open={open} title="Create subscription plan" onClose={onClose}>
       <div className="form-grid">
         <label>
+          Audience
+          <Select
+            value={subjectKind}
+            onChange={(event) => {
+              const next = event.target.value as SubscriptionSubjectKind;
+              setSubjectKind(next);
+              if (next === "DOCTOR" && product === "IPD_MANAGEMENT") {
+                setProduct("OFFLINE_OPD");
+              }
+            }}
+            disabled={busy}
+          >
+            <option value="CLINIC">Clinic Organization</option>
+            <option value="DOCTOR">Individual Doctor</option>
+          </Select>
+        </label>
+        <label>
           Product
           <Select value={product} onChange={(event) => setProduct(event.target.value as SubscriptionProductKey)} disabled={busy}>
-            {products.map((item) => (
-              <option key={item.id} value={item.key}>{item.displayName}</option>
-            ))}
+            {products
+              .filter((item) => subjectKind === "CLINIC" || item.key !== "IPD_MANAGEMENT")
+              .map((item) => (
+                <option key={item.id} value={item.key}>{item.displayName}</option>
+              ))}
           </Select>
         </label>
         <label>

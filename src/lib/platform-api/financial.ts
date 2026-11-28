@@ -133,30 +133,111 @@ export function listFinancialReconciliation(query: QueueQuery = {}) {
 
 export type FinancialDashboardMetrics = {
   period?: { from: string | null; to: string | null };
+  activeCommercialModel?: {
+    modelType: "PROVIDER_COMMISSION" | "PATIENT_PLATFORM_FEE";
+    platformFeeMinor: string;
+    gstMode: "INCLUSIVE" | "EXCLUSIVE";
+    gstRateBps: number;
+  };
   grossCollections: { amountMinor: string; formatted: string };
   platformRevenue: { amountMinor: string; formatted: string };
   providerPayablesOutstanding: { amountMinor: string; formatted: string };
   paidOutTotal: { amountMinor: string; formatted: string };
   channelBreakdown: {
-    onlineAppointments: { count: number; grossMinor: string; commissionMinor: string; payableMinor: string };
-    offlineOpd: { count: number; grossMinor: string; commissionMinor: string; clinicSettlementMinor: string };
+    onlineAppointments: {
+      count: number;
+      grossMinor: string;
+      serviceAmountMinor?: string;
+      commissionMinor: string;
+      platformFeeMinor?: string;
+      platformFeeGstMinor?: string;
+      platformRevenueMinor?: string;
+      payableMinor: string;
+    };
+    offlineOpd: {
+      count: number;
+      grossMinor: string;
+      serviceGrossMinor?: string;
+      discountMinor?: string;
+      commissionMinor: string;
+      platformRevenueMinor?: string;
+      gstMinor?: string;
+      platformFeeTotalMinor?: string;
+      clinicSettlementMinor: string;
+    };
     subscriptions: { activeCount: number; totalRevenueMinor: string; mrrMinor: string };
     payouts: { count: number; totalMinor: string };
   };
   currency?: string;
   grossCollectionsMinor?: string;
+  grossServiceValueMinor?: string;
+  discountsMinor?: string;
+  netCollectionsMinor?: string;
   platformRevenueMinor?: string;
+  platformFeeGstMinor?: string;
   providerPayablesOutstandingMinor?: string;
+  inProgressPayablesMinor?: string;
   payoutsCompletedMinor?: string;
   subscriptionRevenueMinor?: string;
   offlineOpdCollectionsMinor?: string;
   onlineConsultationsVolumeMinor?: string;
   refundsProcessedMinor?: string;
   unreconciledCount?: number;
+  reconciliation?: {
+    grossServiceValueMinor: string;
+    discountsMinor: string;
+    netCollectionsMinor: string;
+    onlineProviderPayableMinor: string;
+    offlineClinicRetainedMinor: string;
+    platformNetRevenueMinor: string;
+    totalTaxLiabilityMinor: string;
+    commissionAdjustmentsMinor?: string;
+    allocatedTotalMinor: string;
+    unallocatedDeltaMinor: string;
+    completedPayablesOutstandingMinor: string;
+    inProgressEscrowPayablesMinor: string;
+    paidOutTotalMinor: string;
+    refundsProcessedMinor: string;
+    ledgerAccounts?: Record<string, string>;
+  };
+  revenueByModel?: {
+    providerCommission: { count: number; serviceVolumeMinor: string; revenueMinor: string; gstMinor?: string };
+    patientPlatformFee: { count: number; serviceVolumeMinor: string; revenueMinor: string; gstMinor: string; totalCollectedMinor: string };
+  };
+  revenueByCommercialModel?: {
+    providerCommission: {
+      count: number;
+      serviceAmountMinor: string;
+      commissionMinor: string;
+      gstMinor?: string;
+      providerPayableMinor: string;
+      platformRevenueMinor: string;
+    };
+    patientPlatformFee: {
+      count: number;
+      serviceAmountMinor: string;
+      platformFeeMinor: string;
+      platformFeeGstMinor: string;
+      patientPayableMinor: string;
+      providerPayableMinor: string;
+      platformRevenueMinor: string;
+    };
+  };
   channels?: {
     onlineAppointments?: { count: number; grossMinor: string; platformCommissionMinor: string; providerPayableMinor: string };
     offlineOpd?: { billCount: number; grossMinor: string; platformFeeMinor: string; clinicSettlementMinor: string };
-    subscriptions?: { activeSubscribers: number; totalPaymentsCount: number; revenueMinor: string; opdRevenueMinor: string; ipdRevenueMinor: string };
+    subscriptions?: {
+      activeSubscribers: number;
+      activeTrials?: number;
+      activePaidSubscribers?: number;
+      clinicSubscribers?: number;
+      doctorSubscribers?: number;
+      totalPaymentsCount: number;
+      revenueMinor: string;
+      totalDiscountsMinor?: string;
+      opdRevenueMinor: string;
+      ipdRevenueMinor: string;
+    };
     payouts?: { completedCount: number; completedAmountMinor: string; pendingCount: number; pendingAmountMinor: string };
   };
 };
@@ -179,7 +260,17 @@ export type UnifiedTransactionItem = {
   description?: string;
   grossAmountMinor?: string;
   platformFeeMinor?: string;
+  adjustmentAmountMinor?: string;
   providerAmountMinor?: string;
+  commercialModel?: "PROVIDER_COMMISSION" | "PATIENT_PLATFORM_FEE";
+  serviceAmountMinor?: string;
+  providerCommissionMinor?: string;
+  patientPlatformFeeMinor?: string;
+  platformFeeGstMinor?: string;
+  gstMode?: "INCLUSIVE" | "EXCLUSIVE";
+  gstRateBps?: number;
+  patientPayableMinor?: string;
+  platformRevenueMinor?: string;
   reference?: string;
   counterparty?: string;
 };
@@ -216,6 +307,10 @@ export type AdminSubscriptionItem = {
   endsAt?: string | null;
   graceEndsAt?: string | null;
   activationSource?: string;
+  isTrial?: boolean;
+  purchaseId?: string | null;
+  discountAmountMinor?: string;
+  couponCode?: string | null;
   priceMinor?: string;
   lastPaymentReference?: string | null;
 };
@@ -226,6 +321,9 @@ export type AdminSubscriptionDetail = AdminSubscriptionItem & {
     purchaseKind: string;
     status: string;
     amountMinor: string;
+    baseAmountMinor?: string;
+    discountAmountMinor?: string;
+    couponCode?: string | null;
     currency: string;
     createdAt: string;
     paymentId?: string | null;
@@ -402,4 +500,52 @@ export function recordSettlementStatementPayment(statementId: string, body: { pa
 
 export function downloadSettlementStatementPdf(statementId: string) {
   return platformDownload(`/v1/platform/financial/settlement-statements/${encodeURIComponent(statementId)}/pdf`);
+}
+
+export type CommissionAdjustmentStatusResponse = {
+  eligibleCount: number;
+  totalEligibleCommissionMinor: string;
+  totalAdjustedMinor: string;
+  eligible: Array<{
+    allocationSnapshotId: string;
+    appointmentId: string;
+    beneficiaryKind: BeneficiaryKind;
+    beneficiaryDisplayName: string;
+    patientName: string;
+    serviceName: string;
+    currency: string;
+    grossAmountMinor: string;
+    originalProviderPayableMinor: string;
+    originalCommissionMinor: string;
+    adjustedProviderPayableMinor: string;
+    unpaidStatementNumber: string | null;
+    occurredAt: string;
+  }>;
+  adjustments: Array<{
+    id: string;
+    allocationSnapshotId: string;
+    appointmentId: string | null;
+    beneficiaryDisplayName: string;
+    currency: string;
+    amountMinor: string;
+    status: string;
+    reason: string;
+    referenceContext: string;
+    ledgerTransactionId: string | null;
+    createdAt: string;
+    executedAt: string | null;
+  }>;
+};
+
+export function getCommissionAdjustments() {
+  return platformRequest<CommissionAdjustmentStatusResponse>("/v1/platform/financial/commission-adjustments");
+}
+
+export function reverseUnsettledCommissions(body: { snapshotIds?: string[]; reason?: string; cancelUnpaidStatements?: boolean } = {}) {
+  return platformPost<{
+    appliedCount: number;
+    skippedCount: number;
+    totalReversedMinor: string;
+    cancelledStatements: Array<{ id: string; statementNumber: string; previousStatus: string }>;
+  }>("/v1/platform/financial/commission-adjustments/reverse-unsettled", body);
 }

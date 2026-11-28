@@ -5,10 +5,13 @@ import { useCallback, useEffect, useState } from "react";
 import { PlatformApiError } from "../lib/platform-api/client";
 import {
   generateSettlementStatement,
+  getCommissionAdjustments,
   listProviderPayables,
   listSettlementStatementCandidates,
   listSettlementStatements,
+  reverseUnsettledCommissions,
   type BeneficiaryKind,
+  type CommissionAdjustmentStatusResponse,
   type ProviderPayableSummary,
   type SettlementStatement,
   type SettlementStatementCandidateItem,
@@ -58,6 +61,8 @@ export function FinancialSettlementsView() {
   const [offset, setOffset] = useState(0);
   const [items, setItems] = useState<SettlementStatement[]>([]);
   const [total, setTotal] = useState(0);
+  const [commissionStatus, setCommissionStatus] = useState<CommissionAdjustmentStatusResponse | null>(null);
+  const [reversingCommissions, setReversingCommissions] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refresh, setRefresh] = useState(0);
@@ -176,6 +181,25 @@ export function FinancialSettlementsView() {
     }
   };
 
+  const handleReverseCommissions = async () => {
+    setReversingCommissions(true);
+    try {
+      const res = await reverseUnsettledCommissions({ cancelUnpaidStatements: true });
+      toast.show(`Reversed ${res.appliedCount} unsettled commission deduction(s) (${formatMoney(res.totalReversedMinor)}).`);
+      const nextStatus = await getCommissionAdjustments();
+      setCommissionStatus(nextStatus);
+      setRefresh((r) => r + 1);
+    } catch (err) {
+      toast.show(err instanceof Error ? err.message : "Failed to reverse unsettled commissions.");
+    } finally {
+      setReversingCommissions(false);
+    }
+  };
+
+  useEffect(() => {
+    void getCommissionAdjustments().then(setCommissionStatus).catch(() => {});
+  }, [refresh]);
+
   const candidateGross = (candidates ?? []).reduce((acc, c) => acc + BigInt(c.grossAmountMinor), BigInt(0));
   const candidateCommission = (candidates ?? []).reduce((acc, c) => acc + BigInt(c.platformCommissionMinor), BigInt(0));
   const candidatePayable = (candidates ?? []).reduce((acc, c) => acc + BigInt(c.providerPayableMinor), BigInt(0));
@@ -268,7 +292,7 @@ export function FinancialSettlementsView() {
                 <th>Beneficiary</th>
                 <th>Type</th>
                 <th>Gross Consultations</th>
-                <th>Platform Comm.</th>
+                <th>Platform Revenue</th>
                 <th>Total Payable</th>
                 <th>Total Paid Out</th>
                 <th>Outstanding Balance</th>
@@ -436,10 +460,10 @@ export function FinancialSettlementsView() {
 
             <div>
               <label style={{ fontSize: 13, fontWeight: 600, display: "block", marginBottom: 6 }}>
-                {genKind === "CLINIC" ? "Clinic ID" : "Doctor Profile ID"}
+                {genKind === "CLINIC" ? "Clinic ID" : "Doctor ID"}
               </label>
               <Input
-                placeholder={`Enter ${genKind === "CLINIC" ? "Clinic UUID" : "Doctor Profile UUID"}`}
+                placeholder={`Enter ${genKind === "CLINIC" ? "Clinic UUID" : "Doctor UUID"}`}
                 value={genId}
                 onChange={(e) => setGenId(e.target.value)}
               />

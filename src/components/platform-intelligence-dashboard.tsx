@@ -186,7 +186,7 @@ export function PlatformIntelligenceDashboard() {
         const contexts = contextsResult.value.items;
         const targetContexts = selectedClinicId
           ? contexts.filter((c) => c.clinic?.id === selectedClinicId || c.tenantId === selectedClinicId)
-          : contexts.slice(0, 10);
+          : contexts;
 
         const appointmentPromises = targetContexts.map(async (ctx) => {
           try {
@@ -277,7 +277,7 @@ export function PlatformIntelligenceDashboard() {
           const contexts = contextsResult.value.items;
           const targetContexts = selectedClinicId
             ? contexts.filter((c) => c.clinic?.id === selectedClinicId || c.tenantId === selectedClinicId)
-            : contexts.slice(0, 10);
+            : contexts;
 
           const appointmentPromises = targetContexts.map(async (ctx) => {
             try {
